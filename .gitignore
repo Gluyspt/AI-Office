@@ -1,0 +1,88 @@
+# ── Secrets ──────────────────────────────────────────────────────────────────
+# The design injects project secrets as environment variables at session launch,
+# from a store readable only by `office`. Nothing secret should ever reach a clone.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+config/secrets/
+# Per-user Claude config, gateway keys, agent account tokens
+config/hooks/*.local.json
+litellm.config.local.yaml
+
+# ── Node / pnpm ──────────────────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+.npm/
+*.tsbuildinfo
+.node_repl_history
+
+# ── Build output ─────────────────────────────────────────────────────────────
+dist/
+build/
+out/
+.vite/
+packages/*/dist/
+packages/*/build/
+
+# ── Tests and coverage ───────────────────────────────────────────────────────
+coverage/
+.nyc_output/
+.vitest/
+test-results/
+
+# ── Local data ───────────────────────────────────────────────────────────────
+# Postgres volume from docker-compose.dev.yml, plus any local db files.
+pgdata/
+postgres-data/
+*.sqlite
+*.sqlite3
+*.db
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# ── Runtime artifacts the office produces ────────────────────────────────────
+# The PreToolUse guard buffers unguarded edits to disk during an orchestrator
+# outage (ticket 020). Buffers are transient state, never source.
+.guard-buffer/
+*.guard-buffer
+# Knowledge graph snapshots and orchestrator database dumps. The design backs
+# these up to a separate private repo on a nightly cron, not to this one.
+backups/
+*.dump
+graph-snapshots/
+# Preview environment build output (step 8)
+previews/
+
+# ── Claude Code ──────────────────────────────────────────────────────────────
+# .claude/settings.json IS committed — it carries the team's hooks.
+# These are personal or machine-local and are not.
+.claude/settings.local.json
+.claude/worktrees/
+.claude/plans/
+
+# ── Editors ──────────────────────────────────────────────────────────────────
+.idea/
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# ── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
