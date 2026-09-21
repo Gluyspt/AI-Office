@@ -47,6 +47,30 @@ None.
 - [ ] `deploy/sudoers.d/office` passes `visudo -c -f`.
 - [ ] The adapter never runs as root, and never passes a user-supplied value as the `sudo -u` target — the target comes from the session registry only. A test asserts the rejection of an unknown user.
 
+- [ ] **The VPS re-measurement is run and recorded.** `spikes/tmux/drive-session.sh` is executed on the
+      target VPS as the `office` user, and its TSV output replaces the DEFERRED sections of
+      `docs/spikes/002-tmux-tui-control.md`: delivery reliability for idle / mid-turn / permission-prompt
+      states at 20 trials each, `Escape` interrupt timing, the character round-trip matrix, whether
+      `kill-session` fires SessionEnd, per-agent RSS both idle and mid-turn, and `sudo -u` parity for
+      `$HOME`, `CLAUDE_CONFIG_DIR` and the tmux socket.
+
+## Decided
+
+- **This ticket owns ticket 003's deferred measurements.** 003 built the harness but deliberately took
+  no readings: the only machine available was Windows with a WSL2 Ubuntu, and timings against a WSL2
+  kernel, RSS against WSL2 memory accounting, and `sudo -u` on a host where sudo demands a password
+  would all have been wrong in ways that stop being visible once copied into this adapter. No ticket in
+  steps 1–3 sets up the VPS, so the criterion lands here — 007 is the first ticket that needs a real
+  Linux host and it already owns `deploy/sudoers.d/office`.
+- **Three criteria above currently have no source.** "Every character class from ticket 003's
+  findings", "using the mechanism that spike recorded", and "state the measured limit in a code
+  comment" all cite measurements that do not exist yet. They are not satisfiable until the
+  re-measurement runs — which is precisely why it is an acceptance criterion of this ticket and not a
+  footnote somewhere.
+- **The provisional idle RSS figure is not a substitute.** WSL measured ≈0.26 GB per idle agent, but the
+  previous Claude Code build measured 0.57–0.58 GB on the same machine — 2× apart, neither from the
+  target. Ticket 018's cap must not be set from it.
+
 ## Open questions
 
 - [ ] The design's sudoers example lists `gluy`, `user2`, `user3`. The actual account names, and whether they exist on the target VPS, are not settled — the design's own open question "Who owns which department by default?" overlaps this. The file ships with the design's example names and a header comment saying it must be regenerated per host.
