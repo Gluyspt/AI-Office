@@ -2,6 +2,13 @@
 
 **Ticket:** [002](../tasks/002-spike-hook-payloads.md) · **Department:** research · **Observed:** 2026-09-21/22
 
+> **Second run, 2026-09-22, after the WSL login was repaired.** Claude Code was **still `2.1.278`** at
+> the start and end of the re-run (checked twice, as the binary self-updates). The re-run closed the
+> blocked items: the chat bridge end to end (§1), the `PreToolUse` blocking shape (§2), `Stop` and the
+> tool-call payloads (§4, §5), and the self-signed-certificate question (§12). Everything the first run
+> settled was left untouched. **Re-run observations ran over `https`** with a trusted self-signed CA —
+> see §12 for what that costs.
+
 **Everything below was observed on Claude Code `2.1.278`** (`claude --version`), Ubuntu 24.04.4 LTS
 under WSL2, Node 22.23.2, tmux 3.4. Hook behaviour is Claude Code behaviour and transfers to the VPS
 unchanged; wall-clock numbers do not — they are a dev laptop's, and are reported so the *shape* of
@@ -26,20 +33,59 @@ the cost is known, not its VPS value.
 > are told apart, and this is the first thing the post-`/login` re-run should check. If the cert is
 > refused, the fix is a trusted local CA or `NODE_EXTRA_CA_CERTS` exported into every agent session —
 > not a fallback to plaintext.
+>
+> **Answered on the re-run: the cert *is* refused, and `NODE_EXTRA_CA_CERTS` *is* the fix. See §12.**
 
 ## Verdict, in one table
 
 | Question | Answer | Confidence |
 | --- | --- | --- |
-| Chat bridge end to end (send-keys → agent → `Stop` → listener) | **Not proven.** The inbound half works and is measured; the model half could not run — the WSL Claude Code login returns `401 OAuth access token is invalid`. | blocked, see §1 |
-| Can an `http` hook block? | **Yes** — verified on `UserPromptSubmit`. A `200` whose body is `{"decision":"block","reason":"…"}` blocks and feeds the reason back to the agent. **`PreToolUse` itself is unverified** (needs a real tool call, needs the model). | high for the mechanism, **unverified for PreToolUse** |
+| Chat bridge end to end (send-keys → agent → `Stop` → listener) | **Yes — proven.** `send-keys` → `UserPromptSubmit` at the listener in **101 ms**; agent replies; `Stop` arrives **2.6 s** after Enter carrying the reply text. See §1. | high |
+| Can an `http` hook block? | **Yes** — verified on `UserPromptSubmit` *and now on `PreToolUse`*. A `200` whose body is `{"decision":"block","reason":"…"}` blocks both. | high |
+| Can an `http` hook block a **`PreToolUse`**, and with what shape? | **Yes.** `hookSpecificOutput.permissionDecision:"deny"` blocks it (the tool never runs) — the documented shape, inert on `UserPromptSubmit`, authoritative here. Top-level `decision:"block"` also works. **`continue:false` does *not* block: the tool runs, and no turn-end event fires at all.** See §2b. | high |
 | Does a `command` hook exit 2 block, and can it reach the event server first? | **Yes**, both verified. | high |
 | Correlation field | **`session_id`**, on every payload, including the *first* `SessionStart`. The orchestrator can choose it: `claude --session-id <uuid>` works on an interactive TUI launch. | high |
-| Does `Stop` carry `last_assistant_message`? | **Not observed** (no successful turn). `StopFailure` does carry it — see §4. | blocked |
+| Does `Stop` carry `last_assistant_message`? | **Yes** — the turn's last *assistant text block*, verbatim. On a turn that used a tool and then spoke, it holds the text **after** the tool call; tool output never appears in it. A turn that truly halts *at* a tool call fires no `Stop` at all. See §4b. | high |
+| Does an **interrupted** turn (Escape) fire `Stop`, `StopFailure`, or neither? | **Neither.** Observed twice: the only event for an interrupted turn is its opening `UserPromptSubmit`. Busy/idle needs a watchdog. See §4b. | high, reproduced 2× |
+| Does the hook client accept a **self-signed** cert? | **No.** The handshake is rejected (`unknown ca`) and no event arrives, almost silently. `NODE_EXTRA_CA_CERTS` exported into the agent's environment fixes it completely. See §12. | high |
 | Retry on non-2xx? | **No.** Exactly one delivery, error shown to the agent, action proceeds. | high |
 | Does the design's hook config work as written? | **No.** `SessionStart` is never delivered to an `http` hook. See §7. | high, reproduced 3× |
 
-## 1. The chat bridge — what ran, what did not
+## 1. The chat bridge — **it works, end to end**
+
+**Proven on the 2026-09-22 re-run, on `2.1.278`, over https.** A real `claude` TUI in tmux, hooks
+pointed at the echo server, a message driven in with `tmux send-keys`, the agent's reply arriving back
+at the listener in the `Stop` payload's `last_assistant_message`. No part of the loop needed the
+transcript file, a PTY scrape, or any parsing of the TUI.
+
+```
+tmux new-session -d -s spike002-tui -x 100 -y 30 -c <cwd> \
+  -e NODE_EXTRA_CA_CERTS=<cert> "claude --settings <spike settings> --session-id <uuid>"
+tmux send-keys -t spike002-tui -l "reply with exactly the word ready"
+tmux send-keys -t spike002-tui Enter
+```
+
+| Hop | Δ from Enter |
+| --- | --- |
+| `UserPromptSubmit` POST received by the listener — the "delivered" tick | **+101 ms** |
+| `Stop` POST received, carrying `"last_assistant_message": "ready"` | **+2.616 s** |
+
+The +101 ms inbound half matches the first run's 114 ms. The outbound half is dominated entirely by
+the model turn itself (the TUI showed `Cooked for 2s`); hook dispatch and https delivery on loopback
+are sub-millisecond, per §2's transport measurements. **A chat panel built on `UserPromptSubmit` +
+`Stop` costs about a tenth of a second of bridge latency in each direction, and nothing else.**
+
+Three practical notes for ticket 010:
+
+- The reply arrives as **one whole message at turn end**, not as a stream. There is no token-by-token
+  hook. A "typing" indicator has to be driven from `UserPromptSubmit` (start) and `Stop` (end), and
+  the panel shows nothing in between except tool-call events.
+- `stop_hook_active: false` is on the payload — the guard against a `Stop` hook that itself restarts
+  the agent. Ingest should ignore, but not choke on, a payload where it is `true`.
+- `permission_mode` on the payload read `auto` here, because the TUI launched in auto mode by default.
+  It is per-session state visible on every event, which is worth surfacing in the UI.
+
+### What the first run proved, and the blocker it hit *(kept as the record)*
 
 **This is the result that matters and it is incomplete.** The blocker is not architectural: every
 `claude` invocation in WSL — with and without the spike settings, `-p` and interactive, across ~10
@@ -75,7 +121,7 @@ link is whether `Stop` — rather than `StopFailure` — arrives carrying the ag
 Everything in the chain except the model itself is therefore demonstrated: tmux input, the TUI's
 prompt submission, hook dispatch, HTTP delivery to a listener, and turn-end delivery.
 
-### What the human must do to close it
+### What the human had to do to close it — **done, 2026-09-22**
 
 ```bash
 wsl -d Ubuntu
@@ -85,6 +131,11 @@ claude -p "say ready"     # must print ready, not a 401
 
 Then re-run §11's reproduction. The outstanding items are §4 (`Stop`), §5's "Not observed" table, and
 the `PreToolUse` half of §2. Everything else in this document is already settled.
+
+The login was repaired and all three were closed on the re-run. The cause of the original 401 was
+never diagnosed — §10.3's hypothesis (two logins of one account invalidating each other) is neither
+confirmed nor ruled out, and it remains a live operational risk for a system that runs several agents
+on one account.
 
 ## 2. Can an `http` hook block?
 
@@ -108,6 +159,66 @@ by the *top-level* `decision` / `continue` fields rather than the `hookSpecificO
 > `UserPromptSubmit` here. The field mapping is genuinely per-event. **Before building the guard,
 > fire one `PreToolUse` with each of shapes 1–3 and record which one wins.** It is a five-minute
 > test once login works.
+>
+> **Run on the re-run. Answered below — and the field mapping *is* per-event, exactly as feared.**
+
+### 2b. `PreToolUse` — the blocking shape, measured *(re-run, 2.1.278)*
+
+Four shapes fired against a live `Read` tool call in the TUI (`read ./note.txt`), one per turn, the
+echo server switched between turns. "Tool ran?" is read off whether `PostToolUse` fired **and** what
+its `tool_response` contained — the only trustworthy witness.
+
+| # | Echo server response to `PreToolUse` | Tool ran? | Turn ended with `Stop`? | Verdict |
+| --- | --- | --- | --- | --- |
+| 1 | `200` `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"…"}}` | **No** — no `PostToolUse` at all | yes | **BLOCKS.** The documented shape works here. |
+| 2 | `200` `{"decision":"block","reason":"…"}` | **No** — no `PostToolUse` at all | yes | **BLOCKS.** |
+| 3 | `200` `{"continue":false,"stopReason":"…"}` | **YES — the file was read in full** | **NO `Stop`, no `StopFailure`** | **DOES NOT BLOCK.** Dangerous — see below. |
+| 4 | `500` `{"error":"…"}` | n/a (the model answered from context and made no call) | yes | inconclusive; §6's non-2xx finding stands |
+
+**The shape to build ticket 020's guard on, verbatim — either of these two, and shape 1 is the one to
+prefer because it is the documented contract and it is the one that renders as a permission denial
+rather than an error:**
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "src/db/schema.ts is owned by task 41 (agent dev-2). Ask, or pick another file."
+  }
+}
+```
+
+Both blocking shapes feed the reason straight into the agent's context, and the agent handled it
+gracefully and **did not retry** — it stopped and asked the human. The text the guard writes is read
+by the agent as an explanation, so it should say what to do next, not just refuse.
+
+So `UserPromptSubmit` and `PreToolUse` **do not share a blocking vocabulary**: `permissionDecision`
+is inert on `UserPromptSubmit` (shape 1, §2) but authoritative on `PreToolUse`. Top-level
+`decision: "block"` is the one shape that blocked **both**. Any generic "blocking hook response"
+helper in the orchestrator must be per-event, or must emit both fields at once.
+
+#### `continue: false` is a trap, and it is worth a ticket of its own
+
+Shape 3 was tested twice, the second time against a file the session had **never read**, to rule out
+Claude Code's unchanged-file cache. Both times:
+
+- `PreToolUse` fired, the echo server answered `{"continue":false,…}`, **and the tool executed
+  anyway** — `PostToolUse` arrived carrying the file's full text in `tool_response`.
+- The TUI printed `PreToolUse:Read hook stopped continuation: <stopReason>` and the turn ended there
+  with no assistant reply.
+- **Neither `Stop` nor `StopFailure` ever fired.** Waited >20 s after the turn visibly finished.
+
+Two consequences:
+
+1. **For the guard (020):** `continue: false` reads like the strongest possible refusal and is the
+   weakest — it lets the read or the write happen and only then halts the agent. Using it as the
+   ownership guard would leak exactly the content the guard exists to protect. Use
+   `permissionDecision: "deny"`.
+2. **For the chat panel (010, 005):** there is at least one real path by which **a turn ends and no
+   turn-end event is delivered at all**. Anything that treats `Stop`/`StopFailure` as a guaranteed
+   bookend — a spinner, a "thinking" state, a desk marked busy — will hang there forever. A turn-end
+   watchdog is not optional.
 
 ### The `command`-hook fallback works, and reaches the event server
 
@@ -213,6 +324,43 @@ Two consequences for tickets 005 and 010, independent of whether `Stop` behaves 
 Still open, and the first thing to run after login: what `last_assistant_message` holds for a turn
 that **ended in a tool call** versus one that **ended in plain text**. Both cases must be triggered
 deliberately; neither was reachable here.
+
+### 4b. `Stop`, observed *(re-run, 2.1.278)*
+
+**`Stop` fires and carries `last_assistant_message`** holding the agent's final prose verbatim. The
+full payload is in §5. Four turn shapes were driven deliberately:
+
+| Turn | `Stop` fired? | `last_assistant_message` |
+| --- | --- | --- |
+| **Plain text** — "reply with exactly the word ready" | yes, +2.6 s after Enter | `"ready"` — the reply exactly, no decoration |
+| **Ended in a tool call then text** — "read ./note.txt and reply with only the magic word" | yes, +5.4 s | `"pomegranate"` — the text *after* the tool call. Tool output is **not** in this field |
+| **Tool call blocked by a hook** | yes | the agent's prose about being blocked — ordinary assistant text, indistinguishable in shape from a normal reply |
+| **Tool call + `continue:false`** (turn halts at the tool) | **NO event of any kind** | — |
+| **Interrupted with Escape mid-turn** | **NO event of any kind** | — |
+
+So the honest statement of what the field holds: **`last_assistant_message` is the last *assistant
+text block* of the turn.** A turn that emits text, calls a tool, and emits more text yields only the
+final text. Tool calls and their results never appear in it — the chat panel gets them from
+`PreToolUse` / `PostToolUse` or not at all.
+
+#### An interrupted turn fires neither `Stop` nor `StopFailure` — ticket 010's open criterion, answered
+
+**Observed twice.** A long generation was started from `send-keys`, left running ~3.5–4 s (the TUI
+showing `esc to interrupt`), then `tmux send-keys -t <session> Escape`. In both runs, over a 20–25 s
+wait afterwards, the *only* event delivered for that turn was the `UserPromptSubmit` at its start.
+**No `Stop`. No `StopFailure`. No `SessionEnd`. Nothing.**
+
+The TUI also **restores the interrupted prompt into the input box**, so an orchestrator that
+interrupts and then immediately `send-keys` a new message will concatenate the two into one prompt
+unless it sends `C-u` first.
+
+This is the second of the two paths (with `continue:false`, §2b) by which a turn ends and nothing
+tells the orchestrator. Together they settle the design question:
+
+> **A desk cannot be marked idle by the arrival of `Stop`.** The orchestrator needs a turn-end
+> watchdog — an inactivity timer armed at `UserPromptSubmit` and disarmed by `Stop`/`StopFailure` —
+> or a desk will sit "thinking" forever the first time a human hits Escape. Ticket 010's acceptance
+> criterion should read "on `Stop`, **or on the watchdog firing**".
 
 ## 5. Captured payloads
 
@@ -321,6 +469,150 @@ orchestrator sent actually entered the agent* — which is what a "delivered" ti
 needs. It also echoes the prompt, so the orchestrator can verify `send-keys` delivered the text
 intact rather than trusting the keystrokes.
 
+### Stop — `http` *(re-run)*
+
+The turn was `reply with exactly the word ready`.
+
+```json
+{
+  "session_id": "bbbbbbbb-2222-4222-8222-000000000001",
+  "transcript_path": "/home/<user>/.claude/projects/…/<uuid>.jsonl",
+  "cwd": "/home/<user>/spike002-tmp/proj",
+  "scratchpad_dir": "/tmp/claude-<uid>/…/scratchpad",
+  "prompt_id": "<uuid>",
+  "permission_mode": "auto",
+  "effort": { "level": "high" },
+  "hook_event_name": "Stop",
+  "stop_hook_active": false,
+  "last_assistant_message": "ready",
+  "background_tasks": [],
+  "session_crons": []
+}
+```
+
+`background_tasks` and `session_crons` are arrays that were empty throughout; their element shape is
+**unknown** — nothing in this spike populated them. Do not model them from this sample.
+
+### PreToolUse — `http` *(re-run)*
+
+```json
+{
+  "session_id": "bbbbbbbb-2222-4222-8222-000000000001",
+  "transcript_path": "/home/<user>/.claude/projects/…/<uuid>.jsonl",
+  "cwd": "/home/<user>/spike002-tmp/proj",
+  "scratchpad_dir": "/tmp/claude-<uid>/…/scratchpad",
+  "prompt_id": "<uuid>",
+  "permission_mode": "auto",
+  "effort": { "level": "high" },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Read",
+  "tool_input": { "file_path": "/home/<user>/spike002-tmp/proj/note.txt" },
+  "tool_use_id": "toolu_<id>"
+}
+```
+
+**This is everything ticket 020's ownership guard needs and no more.** `tool_name` plus `tool_input`
+(which carries `file_path` for `Read`/`Write`/`Edit`) is the whole basis for a file-ownership
+decision, and `tool_use_id` pairs the event with its `PostToolUse`. Note what is *absent*: no branch,
+no repo, no task id — the guard can only key on `cwd` + `session_id` + the path.
+
+### PostToolUse — `http` *(re-run)*
+
+```json
+{
+  "…": "same envelope as PreToolUse",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Read",
+  "tool_input": { "file_path": "/home/<user>/spike002-tmp/proj/note.txt" },
+  "tool_response": {
+    "type": "text",
+    "file": {
+      "filePath": "/home/<user>/spike002-tmp/proj/note.txt",
+      "content": "spike002 note: the magic word is pomegranate.\n",
+      "numLines": 2,
+      "startLine": 1,
+      "totalLines": 2
+    }
+  },
+  "tool_use_id": "toolu_<id>",
+  "duration_ms": 22
+}
+```
+
+**`tool_response` carries the tool's entire output — for `Read`, the whole file body; for `Write`, the
+whole content written** (observed: `{"type":"create","filePath":…,"content":"hi","structuredPatch":[],
+"originalFile":null,"userModified":false}`). Two things follow for ticket 005: every source file an
+agent touches will flow through the event server and into whatever it persists — a real
+size-and-retention question, and a real *confidentiality* one, since the event store then holds
+copies of project code. `duration_ms` is free per-tool timing for the Usage page.
+
+`tool_response.type` was `"file_unchanged"` (no content) when re-reading an unmodified file the
+session had already read — Claude Code's own dedup. **Ingest must not assume `tool_response` has a
+`content` field.**
+
+### PermissionRequest — `http` *(re-run)*
+
+Fired in `manual` mode for a `Write`, **after** the `PreToolUse` for the same call.
+
+```json
+{
+  "session_id": "bbbbbbbb-2222-4222-8222-000000000001",
+  "transcript_path": "/home/<user>/.claude/projects/…/<uuid>.jsonl",
+  "cwd": "/home/<user>/spike002-tmp/proj",
+  "scratchpad_dir": "/tmp/claude-<uid>/…/scratchpad",
+  "prompt_id": "<uuid>",
+  "permission_mode": "default",
+  "effort": { "level": "high" },
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/home/<user>/spike002-tmp/proj/hello.txt",
+    "content": "hi"
+  },
+  "permission_suggestions": [
+    { "type": "setMode", "mode": "acceptEdits", "destination": "session" }
+  ]
+}
+```
+
+Three things worth carrying:
+
+- **Event order is `PreToolUse` → `PermissionRequest` → (human answers) → `PostToolUse`.** The guard
+  in 020 therefore gets to veto *before* the human is ever asked — good: a denied-by-ownership call
+  never raises a modal for someone to approve by mistake.
+- **`permission_mode` reads `default` while the TUI footer says `manual mode on`.** The UI name and
+  the payload name differ. Observed values: `auto`, `default`. Don't build a UI label off this field
+  without a mapping.
+- `permission_suggestions` is what the TUI's "Yes, and switch to accept edits" option is built from.
+
+**The modal can be answered remotely.** `tmux send-keys -l "1"` then `Enter` approved the write:
+`PostToolUse` arrived **58 ms** later and `Stop` **2.3 s** later, with the file actually created on
+disk. An approvals queue in the office UI is therefore implementable with the same tmux channel as
+chat — `PermissionRequest` out, a keystroke back.
+
+### PreCompact — `http` *(re-run)*
+
+`/compact` typed into a session with ~10 turns of history (the first run's attempt failed only
+because the conversation was too short).
+
+```json
+{
+  "session_id": "bbbbbbbb-2222-4222-8222-000000000001",
+  "transcript_path": "/home/<user>/.claude/projects/…/<uuid>.jsonl",
+  "cwd": "/home/<user>/spike002-tmp/proj",
+  "scratchpad_dir": "/tmp/claude-<uid>/…/scratchpad",
+  "prompt_id": "<uuid>",
+  "hook_event_name": "PreCompact",
+  "trigger": "manual",
+  "custom_instructions": null
+}
+```
+
+`trigger: "manual"`; an automatic compaction was not observed, so the auto value is unconfirmed.
+**Compaction does *not* rotate `session_id`** — events after it carried the same id, unlike `/clear`
+(§3). There is no `PostCompact`, so the orchestrator learns a compaction happened but not when it
+finished or what survived.
+
 ### Common envelope
 
 Every payload carried `session_id`, `transcript_path`, `cwd`, `hook_event_name`, and — except on
@@ -339,16 +631,29 @@ Every payload carried `session_id`, `transcript_path`, `cwd`, `hook_event_name`,
 
 ### Not observed
 
-| Event | Why | What would capture it |
-| --- | --- | --- |
-| **`Stop`** | Needs one successful assistant turn. Every turn died at the 401. | Log in; send one trivial prompt. |
-| **`PreToolUse`** | Needs the model to call a tool. TUI bash mode (`!cmd`) runs the command but fires **no** `PreToolUse` — see §8.4. | Log in; ask the agent to read a file. |
-| **`PostToolUse`** | Same. | Same. |
-| **`PermissionRequest`** | Needs a tool call that is not pre-approved. The session sat in `manual` mode, ready to produce one. | Log in; ask for a write outside the allowlist. |
-| **`PreCompact`** | `/compact` refused with `Not enough messages to compact` — needs a real conversation. | Log in; hold a conversation; `/compact`. |
-| **`TaskCreated` / `TaskCompleted`** | Registered in the spike settings; never fired (no Claude-side task activity without the model). | Log in; let the agent use its own todo list. |
+*First run. Five of these six were captured on the re-run and have moved into §5 above; the table is
+kept so the gap is legible, with the re-run's outcome in the right-hand column.*
 
-**Nothing in this section has an invented schema.** Tickets 005, 009, 010 and 020 must treat these six
+| Event | Why (first run) | Re-run outcome |
+| --- | --- | --- |
+| **`Stop`** | Needs one successful assistant turn. Every turn died at the 401. | **Captured** — §5, §4b |
+| **`PreToolUse`** | Needs the model to call a tool. TUI bash mode (`!cmd`) runs the command but fires **no** `PreToolUse` — see §8.4. | **Captured** — §5, §2b |
+| **`PostToolUse`** | Same. | **Captured** — §5 |
+| **`PermissionRequest`** | Needs a tool call that is not pre-approved. The session sat in `manual` mode, ready to produce one. | **Captured** — §5 |
+| **`PreCompact`** | `/compact` refused with `Not enough messages to compact` — needs a real conversation. | **Captured** — §5 |
+| **`TaskCreated` / `TaskCompleted`** | Registered in the spike settings; never fired (no Claude-side task activity without the model). | **Still not observed** — see below |
+
+#### Still not observed after the re-run
+
+| Event | Why not | What would capture it |
+| --- | --- | --- |
+| **`TaskCreated` / `TaskCompleted`** | Asked directly to "use your todo list to track two trivial steps, then do them", the agent answered inline without opening a todo list at all — no `TodoWrite` tool call, and neither task hook fired. These hooks are plausibly about **background tasks / subagents** rather than the todo list, which this spike deliberately avoided: spawning a subagent means letting an agent run real work, and the brief capped every prompt at a few tokens. | Give an agent a task long enough that it genuinely delegates or backgrounds work, and watch both hooks. Do it with a throwaway account, not on the budget of a spike. |
+| **`Stop` with `stop_hook_active: true`** | Requires a `Stop` hook that itself restarts the agent — not exercised. | Answer a `Stop` hook with a continuation decision. |
+| **`SessionStart` over `http` after `/clear`** | Carried open from §7; not retested. | Assume it does not arrive until measured. |
+| **`StopFailure` for a rate limit** | The only `StopFailure` ever captured was `authentication_failed` (§5). Whether `error: "rate_limit"` carries a reset time is still unknown, and the design's rate-limit detection rests on it. | Run an account to its limit deliberately. |
+| **Automatic (non-`manual`) `PreCompact` trigger** | Only `/compact` was run. | Fill a context window. |
+
+**Nothing in this section has an invented schema.** Tickets 005, 009, 010 and 020 must treat these
 events as unknown shapes until they are captured.
 
 ## 6. Retry and failure behaviour
@@ -438,12 +743,26 @@ launch is the special case). Assume not until measured.
 | Hook config does not hot-reload | Not addressed | **009** |
 | `!` bash mode in the TUI bypasses `PreToolUse` | "`PreToolUse` hook blocks edits to files owned by another active task" | **020** — document the limit rather than claim coverage |
 
+### Added by the 2026-09-22 re-run
+
+| Finding | Contradicts | Tickets |
+| --- | --- | --- |
+| **The hook client refuses a self-signed cert.** With `https` hook URLs and no trusted CA, *every* hook silently fails its TLS handshake and no event is delivered. `NODE_EXTRA_CA_CERTS` in the agent process's environment is the fix (§12) | The "https everywhere, loopback included" decision was taken without a cost attached | **009** (the launch environment, not just the settings file, is part of hook provisioning), **007** (session spawn must export it), **005** (the event server must log TLS handshake failures, or a mis-provisioned agent is indistinguishable from a silent one) |
+| **A turn can end with no turn-end event at all** — observed on two independent paths: an `Escape` interrupt, and a `PreToolUse` answered `continue:false`. Neither fires `Stop` *or* `StopFailure` (§2b, §4b) | "The `Stop` hook … POSTs to the event server, which pushes to the chat panel" treats turn-end as guaranteed | **010** (busy/idle needs a watchdog, not just `Stop`; the acceptance criterion should read "on `Stop`, or on the watchdog firing"), **005**, **015** (anything released at turn end leaks on an interrupt) |
+| **`continue:false` does not prevent the tool from running.** The `Read` executed and `PostToolUse` delivered the file's full contents; only the agent loop was halted afterwards. Verified twice, the second time on a never-read file to exclude the unchanged-file cache (§2b) | The design assumes a hook refusal prevents the action | **020** — the guard must use `permissionDecision:"deny"`; using `continue:false` would leak exactly what the guard protects |
+| **Blocking vocabulary is per-event, now demonstrated in both directions.** `hookSpecificOutput.permissionDecision:"deny"` blocks `PreToolUse` but is inert on `UserPromptSubmit`; top-level `decision:"block"` blocks both (§2, §2b) | "Hooks block by exiting with code 2" — one mechanism | **020**, **009** — a shared "block" helper must be per-event or emit both fields |
+| **`PostToolUse.tool_response` carries full tool output** — whole file bodies on `Read`, whole written content on `Write` | Not addressed | **005** — event volume, retention, and the fact that the event store accumulates copies of project source |
+| **`PermissionRequest` fires *after* `PreToolUse`, and the modal is answerable by `send-keys`** (`"1"` + `Enter`; `PostToolUse` 58 ms later) | Not addressed — the design does not say approvals are remotely drivable | **010**/later steps — an approvals queue is buildable on the existing tmux channel; no new transport needed |
+| **`permission_mode` on the payload says `default` where the TUI says `manual mode on`** | Not addressed | **005**, UI work — needs a name mapping |
+| **Compaction does not rotate `session_id`** (unlike `/clear`) | Not addressed | **010** — correlation survives `/compact`; only `/clear` breaks it |
+| **An interrupt restores the interrupted prompt into the TUI input box** | Not addressed | **007**/**010** — send `C-u` before the next `send-keys`, or messages concatenate |
+| **A mid-session survey modal (`How is Claude doing this session?`) can appear unprompted** and swallows keystrokes, exactly like the first-run trust dialog of §8.1 | Not addressed | **007** — provisioning must expect modals at *any* time, not only at launch |
+
 ## 10. Needs a human
 
-1. **Re-login in WSL.** `wsl -d Ubuntu` → `claude` → `/login`. Until then `Stop`, `PreToolUse`,
-   `PostToolUse`, `PermissionRequest` and `PreCompact` cannot be captured, the `PreToolUse` blocking
-   shape cannot be confirmed, and the chat bridge cannot be proven end to end. **Six tickets are
-   waiting on results that are one login away.**
+1. ~~**Re-login in WSL.**~~ **Done — 2026-09-22.** The login was repaired and the re-run captured all
+   five blocked payloads, the `PreToolUse` blocking shape, and the chat bridge end to end. The six
+   tickets that were waiting are unblocked; what they now need is in §1, §2b, §4b, §5 and §12.
 2. **The carried open question — does `CLAUDE_CONFIG_DIR` keep two logins authenticated at once?**
    Not attempted: it needs a second interactive login, and no credential file was touched. The exact
    test, once two accounts are in hand:
@@ -467,23 +786,38 @@ launch is the special case). Assume not until measured.
 ## 11. Reproducing this
 
 ```bash
-# listener
-node spikes/hooks/echo-server.mjs            # PORT=8787, LOG=~/spike002-tmp/hook-events.jsonl
-                                             # DELAY_MS=30000 to exercise the hook timeout
+# listener — MUST be inside tmux: a backgrounded process does not survive
+# between separate `wsl.exe` invocations, each of which is its own session
+tmux new-session -d -s spike002-echo -c ~/spike002-tmp \
+  "node <repo>/spikes/hooks/echo-server.mjs 2>&1 | tee -a ~/spike002-tmp/echo-server.out"
+# PORT=8787, LOG=~/spike002-tmp/hook-events.jsonl, DELAY_MS=30000 to exercise the hook timeout
+# it generates ~/spike002-tmp/tls/{key,cert}.pem on first run
 
-# a session wired to it
-tmux new-session -d -s probe -c <workdir> \
+# a session wired to it — NODE_EXTRA_CA_CERTS is mandatory (§12); without it
+# every hook fails the TLS handshake and nothing arrives
+tmux new-session -d -s probe -x 100 -y 30 -c <workdir> \
+  -e NODE_EXTRA_CA_CERTS=$HOME/spike002-tmp/tls/cert.pem \
   "claude --settings <repo>/spikes/hooks/settings.spike.json --session-id $(uuidgen)"
-tmux send-keys -t probe "reply with the word ready"; tmux send-keys -t probe Enter
+tmux send-keys -t probe -l "reply with the word ready"; tmux send-keys -t probe Enter
 
-# make the listener block the next hook
-curl -X POST localhost:8787/control/mode -H 'content-type: application/json' \
-  -d '{"path":"/events/tool","status":200,"body":{"decision":"block","reason":"owned by another task"}}'
+# every curl against the listener needs the cert too
+curl --cacert ~/spike002-tmp/tls/cert.pem https://127.0.0.1:8787/health
+
+# make the listener block the next PreToolUse (the shape that actually blocks)
+curl -X POST --cacert ~/spike002-tmp/tls/cert.pem \
+  https://127.0.0.1:8787/control/mode -H 'content-type: application/json' \
+  -d '{"path":"/events/tool","status":200,"body":{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"owned by another task"}}}'
 
 # and reset it
-curl -X POST localhost:8787/control/mode -H 'content-type: application/json' \
+curl -X POST --cacert ~/spike002-tmp/tls/cert.pem \
+  https://127.0.0.1:8787/control/mode -H 'content-type: application/json' \
   -d '{"path":"/events/tool","reset":true}'
 ```
+
+Triggers for the events that need the model: a tool call is `read ./note.txt`; a `PermissionRequest`
+needs `manual` mode (one `tmux send-keys -t probe BTab` from auto) plus a write; `PreCompact` needs
+`/compact` after ~10 turns; an interrupt is `tmux send-keys -t probe Escape` a few seconds into a long
+generation, followed by `C-u` to clear the prompt it restores.
 
 `spikes/hooks/settings.spike.json` registers every event the design names, plus `UserPromptSubmit`
 (spike instrumentation) and both model-switch events. `MessageDisplay` is deliberately absent, since
@@ -492,3 +826,54 @@ specifies it** — which is why §7 was visible at all.
 
 Scratch material (echo-server log, throwaway projects, command-hook probes) lived in `~/spike002-tmp`
 in WSL and was removed afterwards. Nothing outside this repo's three spike files was left behind.
+
+> **Re-run note.** A backgrounded process does **not** survive between separate `wsl.exe` invocations —
+> each call is its own session and everything in it is reaped when the call returns. The echo server
+> must be started inside tmux to outlive the call that started it:
+>
+> ```bash
+> tmux new-session -d -s spike002-echo -c ~/spike002-tmp \
+>   "node /path/to/spikes/hooks/echo-server.mjs 2>&1 | tee -a ~/spike002-tmp/echo-server.out"
+> ```
+
+## 12. The hook client rejects a self-signed certificate
+
+**Answered: refused, and `NODE_EXTRA_CA_CERTS` fixes it.** This is the finding the https decision
+costs, and it is a provisioning requirement, not a footnote.
+
+Two otherwise identical `-p` turns against the TLS echo server, same settings file, same cwd:
+
+| Run | Env | Events delivered | Echo server saw |
+| --- | --- | --- | --- |
+| A | *(nothing)* | **none** | 4 × `tlsClientError`, the first being `tlsv1 alert unknown ca` (`SSL alert number 48`), the rest `socket hang up` |
+| B | `NODE_EXTRA_CA_CERTS=$HOME/spike002-tmp/tls/cert.pem` | **all three** (`UserPromptSubmit`, `Stop`, `SessionEnd`) | clean; no handshake errors |
+
+The exact working invocation:
+
+```bash
+export NODE_EXTRA_CA_CERTS=/home/<user>/spike002-tmp/tls/cert.pem
+claude --settings <repo>/spikes/hooks/settings.spike.json --session-id <uuid>
+```
+
+Three things follow.
+
+1. **The hook client honours `NODE_EXTRA_CA_CERTS`.** It is the Node process's own TLS trust store, so
+   the variable must be exported **in the environment the `claude` process is launched with**. For the
+   orchestrator that means the tmux/spawn environment of every agent session — one more thing
+   provisioning must get right, and a silent total hook outage if it is missed.
+2. **The failure is *not* silent, but it is nearly so.** The agent-visible surface was a single line,
+   and only for the hook that fired while output was still being written:
+
+   ```
+   SessionEnd hook [https://127.0.0.1:8787/events/end] failed: self signed certificate
+   ```
+
+   Run A produced **four** rejected handshakes but only that one visible line; the others — the
+   `UserPromptSubmit` and `Stop` of the turn among them — failed with **nothing** printed. From the
+   orchestrator's side a mis-provisioned CA is indistinguishable from an agent that never spoke — which
+   is exactly why the echo server logs `tlsClientError` separately. **The ingest side needs the same
+   instrumentation in production:** a TLS handshake that never becomes a request must be logged, or the
+   first symptom of a broken rollout will be "the chat panel went quiet".
+3. **A per-run generated cert does not scale.** The cert here is generated by the echo server on first
+   run. In the real system the event server's cert and the agents' trust store are the *same*
+   provisioning step; they cannot be owned by different tickets without a handshake between them.

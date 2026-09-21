@@ -10,12 +10,16 @@
 //
 //   node echo-server.mjs            # PORT=8787 LOG=$HOME/spike002-tmp/hook-events.jsonl
 //
-// Whether Claude Code's hook client ACCEPTS a self-signed cert is unverified — it could
-// not be tested during the spike because the WSL login was expired. That is the first
-// thing to check on the re-run: if hooks stop arriving after this change, the cert is
-// the suspect, and the fix is to trust the CA rather than to fall back to plaintext:
+// ANSWERED on the 2026-09-22 re-run (Claude Code 2.1.278): the hook client does NOT
+// accept a self-signed cert. Without a trusted CA every hook fails the handshake and no
+// event arrives — the tlsClientError handler below logs `unknown ca`, which is the only
+// way to tell that apart from "the hook never fired". The fix is to trust the CA, never
+// to fall back to plaintext. This export is MANDATORY in the environment `claude` is
+// launched with (the tmux/spawn env, not just a settings file):
 //
 //   export NODE_EXTRA_CA_CERTS=$SPIKE_TLS_DIR/cert.pem      # before launching claude
+//
+// See docs/spikes/001-hook-payloads.md §12.
 //
 // Control plane (not a hook path):
 //   POST /control/mode   {"path":"/events/tool","status":200,"body":{...}}   -> set reply
