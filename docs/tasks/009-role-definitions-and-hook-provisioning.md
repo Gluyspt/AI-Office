@@ -64,6 +64,21 @@ None.
       its runbook. The launch environment is read once at spawn, exactly like hook config; a rotated
       cert does not reach a live session.
 
+- [ ] **Every agent session is launched with its permission mode set explicitly**, and a test
+      asserts the provisioned launch does not rely on the default. Spike 003 observed that a bare
+      `claude` starts in `⏵⏵ auto mode`, and that some commands ran with **no dialog at all**. An
+      inherited mode is therefore not the conservative one, and the design's whole permissions model
+      ("detect the rest via the `PermissionRequest` hook, which marks the agent blocked in the UI")
+      assumes prompts actually happen. If provisioning says nothing, they may not.
+- [ ] **The mode is the most restrictive one under which the role's own allowlist still works** —
+      pre-approval comes from the role's settings allowlist (design, "Permissions", step 1), never from
+      running the agent unconstrained. **`bypassPermissions` / auto-accept is forbidden for agent
+      sessions**, and a provisioned config carrying it fails the test.
+- [ ] **The exact flag or settings key is confirmed against the installed build before shipping**, not
+      assumed. Spike 002 saw `permission_mode` report `default` in hook payloads while the TUI showed
+      "manual mode", so the vocabulary does not map cleanly and the provisioned value must be verified
+      by observing a real session, not by reading the name.
+
 ## Decided
 
 - **Every hook URL this ticket emits is `https`**, per the system-wide decision (see the ticket index).
