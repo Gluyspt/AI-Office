@@ -60,6 +60,20 @@ None.
       005's TLS logging makes that distinction available, because the remedies differ: a missing env
       var in provisioning versus a certificate that needs reissuing.
 
+- [ ] **`POST /sessions/:id/message` refuses to deliver while a permission dialog is up**, returning
+      a typed refusal naming the pending tool call rather than sending keys. Spike 003 measured the
+      alternative: a perfectly ordinary chat message delivered into a waiting dialog **approves it**,
+      3/3 — the dialog ignores the text and the trailing `Enter` selects the highlighted `1. Yes`. The
+      approved command ran and left a file on disk. This is exactly the outcome the design's "do not
+      build keystroke injection to answer permission prompts" rule exists to prevent, reached through
+      the *ordinary chat path*, with no injection feature anywhere in the system. A queued message must
+      wait for the dialog to clear, or be refused — never delivered blind.
+- [ ] **Busy/idle is not read from the pane's `esc to interrupt` marker.** That marker clears
+      148–342 ms after a message is *submitted*, while the turn runs on for seconds afterwards
+      (spike 003 §2, transcript-verified). Anything scraping it reports a working agent as idle as soon
+      as one message has been queued. Session state comes from events, with the watchdog ticket 010
+      needs for the same reason.
+
 ## Decided
 
 Source: `docs/spikes/001-hook-payloads.md`.
