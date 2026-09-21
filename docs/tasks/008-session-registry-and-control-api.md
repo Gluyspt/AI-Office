@@ -46,6 +46,31 @@ None.
 - [ ] Every control action writes an event through ticket 005's ingest so it appears on the WebSocket stream — a test asserts an interrupt is visible to a subscribed client.
 - [ ] `startSession` records `model` and `model_reason` on the row; a request without a reason is rejected, because the Spawn feed in a later step depends on the reason always being present.
 
+## Decided
+
+Source: `docs/spikes/001-hook-payloads.md`.
+
+- **The correlation key is `session_id`, and this ticket can choose it.** It is present on every hook
+  payload including the *first* `SessionStart`, and `claude --session-id <uuid>` works on an interactive
+  TUI launch. No `cwd`-plus-tmux-name heuristic is needed, and the env-var fallback the ticket
+  contemplated is unnecessary. Note `CLAUDE_SESSION_ID` is **not** set in the environment — only
+  command hooks see identifying env vars.
+- **A tmux session is not one `claude` session.** Ids are single-use (relaunching with one already seen
+  exits 1, `already in use`) and `/clear` ends the session and rotates the id. So the registry row cannot
+  assume a 1:1 mapping to `claude_session_id`; it must tolerate a succession of them. This is the
+  mechanism that forces the "sessions are segments" decision in 010 — it is not merely a modelling
+  preference.
+- **`SessionEnd` does not mean the agent stopped.** It fires with `reason: "clear"` while the agent keeps
+  working. The criterion above marking a row `ended` on SessionEnd must exclude that reason, or a
+  `/clear` kills a live session's record. Observed reasons: `clear`, `other`, `prompt_input_exit`.
+- **`SessionStart` arrives via a `command` hook, not `http`** — it is never delivered to an `http` hook.
+  Ticket 009 emits it; this ticket only needs to know the payload still arrives through 005's ingest.
+
+**Still unknown, and this ticket must not assume otherwise:** whether tmux can be trusted to hold a
+mid-turn message queue. Ticket 003 deferred that measurement and 007 now owns it. Until it is answered,
+do not build on tmux queueing — if the orchestrator must own the queue, it needs to survive a restart,
+which is a schema change rather than a refactor.
+
 ## Open questions
 
 - [ ] The design says "The orchestrator refuses `start_session` while paused" — the pause flag does not exist until ticket 028. The check point is stubbed here with a comment naming ticket 028.

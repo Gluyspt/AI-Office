@@ -71,8 +71,27 @@ None.
   previous Claude Code build measured 0.57–0.58 GB on the same machine — 2× apart, neither from the
   target. Ticket 018's cap must not be set from it.
 
+- **`tmux has-session` is not a readiness signal.** Source: `docs/spikes/002-tmux-tui-control.md`. A first launch in an unseen
+  directory raises a folder-trust dialog, and a fresh install raises onboarding modals; the session
+  exists and reports alive while the TUI is blocked behind them. The criterion above that `hasSession`
+  reports within 2 s therefore proves the *session* started, not that the agent can receive a message.
+  `newSession` must confirm the composer is up — not merely that tmux has a session — before anything
+  sends a brief, or the first message answers a dialog.
+- **`load-buffer` + `paste-buffer` is not safe for multi-line text.** With an embedded newline it
+  submitted early: `line one` was sent as a turn and `line two` was left in the composer — half a
+  message, delivered and answered, no error raised. `send-keys`, `send-keys -l` and `paste-buffer -p`
+  all kept it as a draft. Use one of those; the plain form is a correctness bug, not a style choice.
+- **The tmux buffer limit is not observable from the pane.** Pastes of roughly 1000 characters or more
+  collapse to `[Pasted text #N]` in the rendered pane, so the criterion above asking for the measured
+  limit in a code comment cannot be satisfied by scraping — it needs the harness's own instrumentation.
+
 ## Open questions
 
 - [ ] The design's sudoers example lists `gluy`, `user2`, `user3`. The actual account names, and whether they exist on the target VPS, are not settled — the design's own open question "Who owns which department by default?" overlaps this. The file ships with the design's example names and a header comment saying it must be regenerated per host.
 - [ ] Granting `NOPASSWD: /usr/bin/tmux` in full lets `office` run `tmux new-session` with **any** command as those users. The design accepts this; note that a tighter rule would need a wrapper script. Not changing it here, but recording it as a deliberate choice rather than an oversight.
+- [ ] **Should the Claude Code CLI version be pinned on the VPS?** Source: `docs/spikes/002-tmux-tui-control.md`. The binary
+      auto-updated 2.1.178 to 2.1.278 *during* the spike, and the new build added a blocking modal that
+      held the prompt indefinitely. The TUI changed under a running experiment with nothing deployed.
+      Anything that scrapes or drives the pane breaks silently when that happens. New question, raised
+      by 003.
 - [ ] Whether the orchestrator or tmux owns the queue for mid-turn messages depends on ticket 003's finding. This ticket exposes both `sendKeys` and `sendLiteral` and leaves the queueing decision to ticket 008.

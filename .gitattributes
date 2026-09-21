@@ -1,0 +1,14 @@
+# The target is a Linux VPS; the dev box is Windows with core.autocrlf=true.
+# Without this file, shell scripts and hooks land CRLF in a Windows working
+# tree and fail on Linux with `bad interpreter: /bin/bash^M` — including when
+# run through WSL from /mnt/d, which is how the spikes are driven.
+* text=auto eol=lf
+
+# Executed as-is on Linux. Never CRLF, regardless of platform.
+*.sh    text eol=lf
+*.mjs   text eol=lf
+
+# Binary; never touch.
+*.png   binary
+*.jpg   binary
+*.pem   binary

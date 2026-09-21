@@ -47,6 +47,20 @@ Two limits, both checked at spawn time. This is the **early-stage protection aga
 
 A refused spawn is **queued, not dropped**, and the queue records which of the two limits refused it.
 
+Source: `docs/spikes/002-tmux-tui-control.md`.
+
+- **The RSS measurement this ticket's cap is meant to come from does not exist.** The ticket says the
+  per-project cap is set from ticket 003's measurement; 003 deliberately took no readings, and ticket 007
+  now owns producing them on the VPS. Until then there is no defensible number.
+- **The provisional figure is not usable as a default.** WSL measured roughly 0.26 GB process-tree RSS
+  for an idle agent — but the *previous* Claude Code build measured 0.57 to 0.58 GB on the same machine,
+  a 2x spread between two builds a day apart, and WSL2 memory accounting is not a bare VPS's. **Mid-turn
+  RSS was never measured at all**, and mid-turn is what actually determines whether the box survives N
+  concurrent agents.
+- **So the cap ships as required config with no default, and its config comment records that it is
+  unmeasured**, naming 007 as the ticket that replaces the guess. This is not a formality: 019 inherits
+  this cap as its only safety property, and 029 renders it to the user as though it meant something.
+
 ## Acceptance criteria
 
 - [ ] `start_session(role, dept, owner, project, brief, backend, model)` starts a session through ticket 008's API and returns its id and tmux name.

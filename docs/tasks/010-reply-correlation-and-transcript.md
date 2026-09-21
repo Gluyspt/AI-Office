@@ -43,6 +43,26 @@ None.
 
 **A conversation belongs to a task or to a role slot; sessions are segments within it.** Role slots (project + department + role) are first-class, not a fallback — Management and department leads never have tasks. Every message carries both `conversation_id` and `session_id`, so a human sees continuous history across pause, resume, model switch and crash, while the record of which process produced each message stays intact.
 
+Source: `docs/spikes/001-hook-payloads.md`.
+
+- **Key on `hook_event_name`, never on the presence of `last_assistant_message`.** `StopFailure` carries
+  that field too, holding the *error banner* text. Treating "the field is present" as "the agent spoke"
+  renders API errors and rate-limit notices in the chat panel as if the agent had said them. This is the
+  single most likely way to get this ticket subtly wrong.
+- **The correlation key is `session_id`**, present on the first `SessionStart`, and mintable by the
+  orchestrator via `claude --session-id`. The ticket's open question about an env-var fallback is closed:
+  it is not needed.
+- **Segments are forced by the mechanism, not merely chosen.** Session ids are single-use and `/clear`
+  rotates them, so one desk genuinely produces a succession of `claude` session ids. The conversation
+  model already assumes this; the spike confirms it is unavoidable.
+
+**Blocked, and the ticket already says so — the reason is now specific.** The `Stop` payload itself was
+never observed: the spike's WSL login returned 401, so no turn ever produced an assistant reply. Whether
+`Stop` carries `last_assistant_message`, and what it holds for a turn ending in a tool call versus plain
+text, is still unanswered. The criterion "a turn that ends with no assistant text does not append an
+empty message" is also unverifiable until then — and it is not known whether an interrupted turn fires
+`Stop`, `StopFailure`, or neither, because ticket 003 deferred the interrupt measurement.
+
 ## Acceptance criteria
 
 - [ ] A conversation resolves by task id where the session has a task, and by role slot (project, department, role) where it does not — asserted for a Management lead, a dev lead, and a task agent.

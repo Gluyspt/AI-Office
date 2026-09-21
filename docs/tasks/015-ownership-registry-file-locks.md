@@ -43,6 +43,23 @@ None.
 
 Glob-versus-glob overlap is undecidable in general. **Resolve conservatively: when the algorithm cannot prove two patterns are disjoint, report a conflict.** A false conflict costs one serialised task; a false clearance costs a git conflict, which is the failure this registry exists to prevent.
 
+Source: `docs/spikes/001-hook-payloads.md`.
+
+- **`releaseBySession` must exclude `reason: "clear"`.** `SessionEnd` fires when a user or agent runs
+  `/clear` — and the agent carries on working afterwards. A release path that treats every `SessionEnd`
+  as "this session is finished" will free locks out from under a live agent still holding them, which is
+  precisely the git conflict this registry exists to prevent. Observed `SessionEnd` reasons: `clear`,
+  `other`, `prompt_input_exit`. Release on the latter two; ignore `clear`.
+- **The SessionEnd release path may not be reliable at all.** Whether `tmux kill-session` fires
+  `SessionEnd` is *unmeasured* — ticket 003 deferred it and 007 now owns it. If it does not, TTL expiry
+  becomes the primary release path rather than the backstop, which raises the stakes on the lock-TTL
+  number that is still an open question below. Do not let TTL default to something comfortable on the
+  assumption that SessionEnd usually catches it first.
+- **The `PostToolUse` heartbeat trigger is still unfounded.** `PostToolUse` was never observed firing
+  during the spike, and it is absent from the design's hook block. The heartbeat endpoint is exposed here
+  and its trigger stays with ticket 020, as the ticket already says — but nobody has yet seen the event
+  that is supposed to drive it.
+
 ## Acceptance criteria
 
 - [ ] Acquiring a scope that overlaps an active lock fails and names the conflicting task; acquiring a disjoint scope succeeds.
