@@ -46,6 +46,20 @@ None.
 - [ ] Every control action writes an event through ticket 005's ingest so it appears on the WebSocket stream — a test asserts an interrupt is visible to a subscribed client.
 - [ ] `startSession` records `model` and `model_reason` on the row; a request without a reason is rejected, because the Spawn feed in a later step depends on the reason always being present.
 
+- [ ] **A spawned session is not `running` until its hooks are proven to reach ingest.** After
+      starting tmux, the registry waits for that `session_id`'s first event (`SessionStart`) within a
+      configured timeout; if none arrives, the row is marked `failed` with a reason naming hook
+      delivery — never `running`. Rationale, from spike 002: the https-everywhere decision means an
+      agent launched without `NODE_EXTRA_CA_CERTS` in its environment **works perfectly and is
+      completely invisible to the orchestrator** — every hook fails the TLS handshake, no event
+      arrives, and nothing crashes. A desk that looks healthy and reports nothing is the worst failure
+      shape in the system; this converts it into a loud, specific refusal at the only moment anyone is
+      watching. The same check catches a forgotten hook config, an expired certificate, and an event
+      server that is simply down.
+- [ ] **The failure reason distinguishes "no event at all" from "handshake rejected"** where ticket
+      005's TLS logging makes that distinction available, because the remedies differ: a missing env
+      var in provisioning versus a certificate that needs reissuing.
+
 ## Decided
 
 Source: `docs/spikes/001-hook-payloads.md`.

@@ -50,6 +50,20 @@ None.
 - [ ] Provisioning refuses to write outside the target user's config directory — a test passes a traversal path and asserts rejection.
 - [ ] The provisioner never writes a secret into the settings file; secrets are injected as environment variables at launch.
 
+- [ ] **`NODE_EXTRA_CA_CERTS` is exported into the environment every agent is launched with**, and a
+      test asserts a provisioned session's environment contains it. Spike 002 verified that Claude
+      Code's hook client **rejects a self-signed certificate outright** (`tlsv1 alert unknown ca`) and
+      that this variable fixes it completely — and that it must be in the *launch environment*, not the
+      settings file. Provisioning that emits correct hook URLs but forgets this produces an agent whose
+      every hook silently fails.
+- [ ] **The certificate's expiry is checked at provisioning time and surfaced**, not discovered when it
+      lapses. A single shared certificate means **every agent in the office goes silent on the same
+      day** it expires. Issue it long-lived — it is self-signed and internal, so there is no revocation
+      story worth preserving — and refuse to provision against one already expired.
+- [ ] **Rotating the certificate requires restarting every running agent**, and the ticket says so in
+      its runbook. The launch environment is read once at spawn, exactly like hook config; a rotated
+      cert does not reach a live session.
+
 ## Decided
 
 - **Every hook URL this ticket emits is `https`**, per the system-wide decision (see the ticket index).

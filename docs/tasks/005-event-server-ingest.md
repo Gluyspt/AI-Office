@@ -48,6 +48,17 @@ None.
 - [ ] `GET /events?project_id=&since=&limit=` returns events newest-first with a working `since` cursor.
 - [ ] Killing and restarting the process loses no stored event.
 
+- [ ] **A TLS handshake rejected by a hook client is logged as a distinct, greppable error** naming
+      the peer and the OpenSSL reason (`unknown ca` and friends), not swallowed. Spike 002 measured
+      this: a client that refuses the server's certificate produces **no request at all**, which is
+      byte-for-byte indistinguishable from a hook that never fired. Without this line, a
+      mis-provisioned rollout looks exactly like agents that quietly stopped working. Node exposes it
+      as the server's `tlsClientError` event — `spikes/hooks/echo-server.mjs` already does this and is
+      the reference.
+- [ ] **A handshake failure is visible beyond the log**: it publishes an event, so ticket 022's
+      degraded banner and ticket 008's spawn self-test have something to key on. A rejection that only
+      reaches a log file is a rejection nobody sees.
+
 ## Decided
 
 - **Every endpoint this ticket creates is `https`, including on loopback.** No plaintext listener
@@ -62,6 +73,14 @@ None.
 - **Open, and it gates this ticket:** whether Claude Code's hook client accepts a self-signed cert is
   untested. If it does not, hooks need a trusted local CA or `NODE_EXTRA_CA_CERTS` exported into every
   agent session. See `docs/spikes/001-hook-payloads.md`.
+
+- **`PostToolUse.tool_response` carries full tool output** — whole file bodies for a `Read`, whole
+  written content for a `Write` (spike 002, §5). Storing every event with its payload intact therefore
+  means **the event log accumulates copies of project source**. Two consequences the design never
+  considered: the table grows far faster than an event count suggests, and a database dump carries the
+  contents of every managed repo. The acceptance criterion above ("full payload intact") stands — this
+  ticket does not start truncating on its own judgement — but the retention question below is now a
+  confidentiality question too, not only a disk one.
 
 ## Open questions
 
