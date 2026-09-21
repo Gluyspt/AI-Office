@@ -1,0 +1,296 @@
+# Implementation tickets — build steps 1–3
+
+Thirty-one tickets covering the first three build steps of [the system design](../ai-agent-office-design.md):
+
+1. **Spine** — one project, Management and one Dev lead as tmux sessions, replies via the Stop hook, interrupt working.
+2. **Coordination** — task board with draft state and dependencies, planning flow, ownership registry, `claim_task` / `complete_task`, the PreToolUse guard.
+3. **Tasks page and chat panel** — the UI becomes usable, plus pause, emergency stop and resume.
+
+The design says steps 1–3 carry the risk: if the chat bridge doesn't work, nothing above it matters. Three of these tickets are research spikes for exactly that reason, and they gate the tickets that depend on their findings.
+
+## Conventions
+
+**One file, one ticket.** No file appears in two tickets' scopes — see the [file ownership map](#file-ownership-map). Three structural conventions make that possible instead of merely aspirational:
+
+| Convention | Established in | Lets a later ticket |
+| --- | --- | --- |
+| Server routes autoloaded from `packages/server/src/routes/` | 005 | add an endpoint without editing a route registry |
+| Event handlers collected from `packages/server/src/events/handlers/` | 005 | add per-event behaviour without editing the dispatcher |
+| Hook config merged from `config/hooks/fragments/` | 009 | add a hook entry without editing the settings template |
+| Numbered SQL files in `db/migrations/` | 004 | add a table without editing a schema file |
+| UI overlays collected by `import.meta.glob` from `src/features/*/overlay.tsx` | 022 | add a slide-in panel without editing the app shell |
+| File-based routes in `packages/web/src/routes/` | 022 | add a page without editing a route table |
+
+**Manifest exception.** Dependency additions to an existing `package.json`, and appended lines in `.env.example`, are append-only and are *not* part of any ticket's file scope. Every other file is owned.
+
+**Open questions are not TODOs.** Where the design leaves something undecided, the ticket says so and names the decision rather than inventing an answer. Several open questions are the design's own, carried forward to the ticket where they first bite.
+
+## Index
+
+| id | title | step | dept | model | blocked by |
+| --- | --- | :-: | :-: | :-: | --- |
+| [001](001-monorepo-scaffold.md) | Monorepo scaffold and dev environment | 1 | dev | sonnet | — |
+| [002](002-spike-hook-payloads.md) | Spike: Claude Code hook payloads and blocking semantics | 1 | research | opus | — |
+| [003](003-spike-tmux-tui-control.md) | Spike: tmux control of a live Claude Code TUI | 1 | research | opus | — |
+| [004](004-server-package-and-db-bootstrap.md) | Server package scaffold and database bootstrap | 1 | dev | sonnet | 001 |
+| [005](005-event-server-ingest.md) | Event server: hook ingest endpoints and event store | 1 | dev | sonnet | 002, 004 |
+| [006](006-websocket-fanout.md) | WebSocket fan-out to connected clients | 1 | dev | sonnet | 005 |
+| [007](007-tmux-adapter.md) | tmux adapter and scoped sudoers | 1 | dev | opus | 003, 004 |
+| [008](008-session-registry-and-control-api.md) | Session registry and control API | 1 | dev | opus | 005, 007 |
+| [009](009-role-definitions-and-hook-provisioning.md) | Role definitions and hook config provisioning | 1 | dev | opus | 002, 008 |
+| [010](010-reply-correlation-and-transcript.md) | Stop-hook reply correlation and chat transcript store | 1 | dev | opus | 002, 005, 008 |
+| [011](011-spine-end-to-end-verification.md) | Spine end-to-end verification | 1 | qa | sonnet | 006, 009, 010 |
+| [012](012-task-schema-and-state-machine.md) | Task schema and state machine | 2 | dev | opus | 004 |
+| [013](013-task-api-and-board-queries.md) | Task API and board queries | 2 | dev | sonnet | 005, 012 |
+| [014](014-task-dependencies.md) | Task dependencies and unblocking | 2 | dev | sonnet | 012, 013, 015 |
+| [015](015-ownership-registry-file-locks.md) | Ownership registry: file-scope locks | 2 | dev | opus | 012 |
+| [016](016-spike-mcp-server-wiring.md) | Spike: per-role MCP server wiring | 2 | research | opus | 009 |
+| [017](017-mcp-task-server.md) | MCP task server: claim_task and complete_task | 2 | dev | opus | 013, 014, 015, 016 |
+| [018](018-mcp-session-server.md) | MCP session server and per-project caps | 2 | dev | opus | 008, 016 |
+| [019](019-planning-flow-draft-batches.md) | Planning flow: draft batches and Start working | 2 | dev | opus | 013, 014, 018 |
+| [020](020-pretooluse-ownership-guard.md) | PreToolUse ownership guard | 2 | dev | opus | 002, 009, 015 |
+| [032](032-interim-no-gate-advance.md) | Interim no-gate advance control | 2 | dev | sonnet | 014, 017 |
+| [021](021-coordination-integration-tests.md) | Coordination integration tests | 2 | qa | sonnet | 014, 017, 019, 020, 032 |
+| [022](022-web-app-scaffold-and-shell.md) | Web app scaffold and app shell | 3 | dev | sonnet | 006, 013 |
+| [023](023-board-primitives.md) | Board primitives: columns and live board state | 3 | dev | opus | 013, 022 |
+| [024](024-task-card-chips-filters.md) | Task card, pipeline chips, and board filters | 3 | dev | sonnet | 023 |
+| [025](025-tasks-page-draft-and-start-working.md) | Tasks page, Draft column, and Start working | 3 | dev | opus | 019, 023, 024 |
+| [026](026-chat-panel.md) | Chat panel | 3 | dev | opus | 010, 022 |
+| [027](027-agent-controls-and-blocked-banner.md) | Agent controls and blocked banner | 3 | dev | sonnet | 008, 026 |
+| [028](028-pause-emergency-stop-resume.md) | Pause, emergency stop, and resume (orchestrator) | 3 | dev | opus | 008, 012, 015 |
+| [029](029-stop-controls-ui.md) | Pause, emergency stop, and resume UI | 3 | dev | sonnet | 018, 020, 022, 028 |
+| [031](031-task-detail-page.md) | Task detail page (minimal) | 3 | dev | sonnet | 013, 024, 026 |
+| [030](030-step-3-acceptance-pass.md) | Step 3 acceptance pass | 3 | qa | sonnet | 025, 026, 027, 029, 031 |
+
+**By step:** 11 / 11 / 10. **By department:** dev 26, research 3, qa 3. **By model:** opus 17, sonnet 15.
+
+Tickets 031 and 032 were added after the decisions below, so they sit out of numeric order — see the execution order under the graph.
+
+## Dependency graph
+
+```mermaid
+flowchart TD
+  subgraph S1["Step 1 — Spine"]
+    T001[001 scaffold] --> T004[004 server + db]
+    T002[002 spike: hooks] --> T005[005 event server]
+    T004 --> T005
+    T005 --> T006[006 websockets]
+    T003[003 spike: tmux] --> T007[007 tmux adapter]
+    T004 --> T007
+    T005 --> T008[008 session registry]
+    T007 --> T008
+    T008 --> T009[009 roles + hooks]
+    T002 --> T009
+    T008 --> T010[010 reply correlation]
+    T002 --> T010
+    T005 --> T010
+    T006 --> T011[011 spine e2e]
+    T009 --> T011
+    T010 --> T011
+  end
+
+  subgraph S2["Step 2 — Coordination"]
+    T004 --> T012[012 task schema]
+    T012 --> T013[013 task API]
+    T005 --> T013
+    T013 --> T014[014 dependencies]
+    T015 --> T014
+    T012 --> T015[015 ownership registry]
+    T009 --> T016[016 spike: MCP wiring]
+    T016 --> T017[017 MCP task server]
+    T013 --> T017
+    T014 --> T017
+    T015 --> T017
+    T016 --> T018[018 MCP session server]
+    T008 --> T018
+    T018 --> T019[019 planning flow]
+    T013 --> T019
+    T014 --> T019
+    T015 --> T020[020 PreToolUse guard]
+    T009 --> T020
+    T002 --> T020
+    T014 --> T032[032 no-gate advance]
+    T017 --> T032
+    T017 --> T021[021 coordination tests]
+    T019 --> T021
+    T020 --> T021
+    T014 --> T021
+    T032 --> T021
+  end
+
+  subgraph S3["Step 3 — Tasks page and chat panel"]
+    T006 --> T022[022 web scaffold]
+    T013 --> T022
+    T022 --> T023[023 board primitives]
+    T013 --> T023
+    T023 --> T024[024 task card]
+    T023 --> T025[025 tasks page + draft]
+    T024 --> T025
+    T019 --> T025
+    T022 --> T026[026 chat panel]
+    T010 --> T026
+    T026 --> T027[027 agent controls]
+    T008 --> T027
+    T008 --> T028[028 pause/stop/resume]
+    T012 --> T028
+    T015 --> T028
+    T028 --> T029[029 stop controls UI]
+    T022 --> T029
+    T018 --> T029
+    T020 --> T029
+    T013 --> T031[031 task detail]
+    T024 --> T031
+    T026 --> T031
+    T025 --> T030[030 step 3 acceptance]
+    T026 --> T030
+    T027 --> T030
+    T029 --> T030
+    T031 --> T030
+  end
+```
+
+**Critical path** (10 deep): 001 → 004 → 005 → 008 → 009 → 016 → 018 → 019 → 025 → 030. Auto-spawn on promotion put the MCP wiring spike and the session server on this path — 016 now gates the two tickets that turn Start working into running agents.
+
+**Start immediately, in parallel:** 001, 002 and 003 have no dependencies. The two step-1 spikes gate six tickets between them, and 016 gates four more, so an unanswered spike stalls more than its own step.
+
+**Ticket numbers are identifiers, not execution order.** Three run out of numeric sequence: 015 before 014 (the scope-ordering validator needs the overlap logic), 032 before 021 (the tests exercise the advance control), and 031 before 030 (the acceptance pass closes the step). A valid step-respecting order:
+
+```
+step 1   001 002 003 004 005 006 007 008 009 010 011
+step 2   012 013 015 014 016 017 018 019 020 032 021
+step 3   022 023 024 025 026 027 028 029 031 030
+```
+
+## File ownership map
+
+Every path any ticket in steps 1–3 creates, and the single ticket that owns it.
+
+| Path | Ticket |
+| --- | :-: |
+| `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `.gitignore`, `.editorconfig`, `.env.example`, `docker-compose.dev.yml`, `vitest.config.ts`, `README.md` | 001 |
+| `agents/management-lead.md`, `agents/dev-lead.md` | 009 |
+| `agents/management-lead.planning.md` | 019 |
+| `config/hooks/base.settings.json`, `config/hooks/fragments/.gitkeep` | 009 |
+| `config/hooks/fragments/pretooluse-guard.json` | 020 |
+| `db/migrations/0001_core.sql` | 004 |
+| `db/migrations/0002_events.sql` | 005 |
+| `db/migrations/0003_sessions.sql` | 008 |
+| `db/migrations/0004_conversations.sql` | 010 |
+| `db/migrations/0005_tasks.sql` | 012 |
+| `db/migrations/0006_task_dependencies.sql` | 014 |
+| `db/migrations/0007_file_locks.sql` | 015 |
+| `db/migrations/0008_spawn_queue.sql` | 018 |
+| `db/migrations/0009_batches.sql` | 019 |
+| `db/migrations/0010_unguarded_edits.sql` | 020 |
+| `db/migrations/0011_pause.sql` | 028 |
+| `db/migrations/0012_gate_bypass.sql` | 032 |
+| `deploy/sudoers.d/office` | 007 |
+| `docs/spikes/001-hook-payloads.md` | 002 |
+| `docs/spikes/002-tmux-tui-control.md` | 003 |
+| `docs/spikes/003-mcp-wiring.md` | 016 |
+| `docs/runbooks/spine-verification.md` | 011 |
+| `docs/runbooks/coordination-verification.md` | 021 |
+| `docs/runbooks/step3-acceptance.md` | 030 |
+| `hooks/pretooluse-guard.sh` | 020 |
+| `scripts/provision-user.sh` | 009 |
+| `spikes/hooks/echo-server.mjs`, `spikes/hooks/settings.spike.json` | 002 |
+| `spikes/tmux/drive-session.sh` | 003 |
+| `spikes/mcp/probe-server.mjs` | 016 |
+| `packages/shared/package.json`, `packages/shared/tsconfig.json`, `packages/shared/src/ids.ts` | 001 |
+| `packages/shared/src/events.ts` | 005 |
+| `packages/shared/src/ws.ts` | 006 |
+| `packages/shared/src/sessions.ts` | 008 |
+| `packages/shared/src/chat.ts` | 010 |
+| `packages/shared/src/tasks.ts` | 012 |
+| `packages/shared/src/locks.ts` | 015 |
+| `packages/shared/src/batches.ts` | 019 |
+| `packages/shared/src/permissions.ts` | 027 |
+| `packages/shared/src/control.ts` | 028 |
+| `packages/server/package.json`, `packages/server/tsconfig.json`, `packages/server/src/config.ts`, `packages/server/src/db/pool.ts`, `packages/server/src/db/migrate.ts` | 004 |
+| `packages/server/src/app.ts`, `packages/server/src/server.ts`, `packages/server/src/routes/events.ts`, `packages/server/src/events/ingest.ts`, `packages/server/src/events/handlers/loader.ts` | 005 |
+| `packages/server/src/events/bus.ts`, `packages/server/src/routes/ws.ts` | 006 |
+| `packages/server/src/orchestrator/tmux.ts`, `naming.ts`, `shell-quote.ts` | 007 |
+| `packages/server/src/orchestrator/sessions.ts`, `packages/server/src/routes/sessions.ts` | 008 |
+| `packages/server/src/orchestrator/provision.ts` | 009 |
+| `packages/server/src/events/handlers/reply.ts`, `packages/server/src/chat/transcript.ts`, `packages/server/src/chat/conversations.ts`, `packages/server/src/routes/chat.ts` | 010 |
+| `packages/server/src/tasks/states.ts`, `packages/server/src/tasks/model.ts` | 012 |
+| `packages/server/src/tasks/repo.ts`, `packages/server/src/routes/tasks.ts` | 013 |
+| `packages/server/src/tasks/dependencies.ts`, `packages/server/src/tasks/scope-ordering.ts`, `packages/server/src/routes/task-dependencies.ts` | 014 |
+| `packages/server/src/locks/registry.ts`, `overlap.ts`, `packages/server/src/routes/locks.ts` | 015 |
+| `packages/server/src/tasks/claim.ts`, `complete.ts`, `packages/server/src/routes/task-actions.ts` | 017 |
+| `packages/server/src/orchestrator/caps.ts`, `packages/server/src/orchestrator/spawn-queue.ts` | 018 |
+| `packages/server/src/planning/batches.ts`, `promote.ts`, `readonly-guard.ts`, `packages/server/src/routes/batches.ts` | 019 |
+| `packages/server/src/routes/guard.ts`, `packages/server/src/locks/guard-check.ts`, `packages/server/src/locks/unguarded-edits.ts`, `packages/server/src/events/handlers/tool.ts` | 020 |
+| `packages/server/src/events/handlers/permission.ts` | 027 |
+| `packages/server/src/orchestrator/pause.ts`, `resume.ts`, `packages/server/src/routes/control.ts` | 028 |
+| `packages/mcp-tasks/` (package.json, tsconfig.json, src/index.ts, src/office-client.ts, src/tools/claim-task.ts, src/tools/complete-task.ts) | 017 |
+| `packages/mcp-session/` (package.json, tsconfig.json, src/index.ts, src/office-client.ts, src/tools/start-session.ts, src/tools/message-session.ts) | 018 |
+| `packages/web/package.json`, `tsconfig.json`, `vite.config.ts`, `index.html`, `src/main.tsx`, `src/routes/__root.tsx`, `src/routes/index.tsx`, `src/lib/api.ts`, `src/lib/ws.ts`, `src/lib/overlays.tsx`, `src/lib/SystemStatus.tsx`, `src/styles/global.css` | 022 |
+| `packages/web/src/features/board/Board.tsx`, `Column.tsx`, `useBoard.ts`, `board.css` | 023 |
+| `packages/web/src/features/board/TaskCard.tsx`, `StateChip.tsx`, `BoardFilters.tsx`, `task-card.css` | 024 |
+| `packages/web/src/routes/tasks.tsx`, `src/features/board/DraftColumn.tsx`, `StartWorkingDialog.tsx`, `useDraftBatch.ts` | 025 |
+| `packages/web/src/features/chat/overlay.tsx`, `ChatPanel.tsx`, `ChatTranscript.tsx`, `ChatComposer.tsx`, `useAgentChat.ts`, `chat.css` | 026 |
+| `packages/web/src/features/chat/AgentControls.tsx`, `BlockedBanner.tsx` | 027 |
+| `packages/web/src/routes/control.tsx`, `src/features/control/overlay.tsx`, `StopControls.tsx`, `ConfirmStopDialog.tsx`, `SpawnQueue.tsx`, `UnguardedEdits.tsx`, `useControl.ts`, `control.css` | 029 |
+| `packages/web/src/routes/tasks.$id.tsx`, `src/features/task-detail/TaskDetail.tsx`, `StateHistory.tsx`, `useTask.ts`, `task-detail.css` | 031 |
+| `packages/server/src/tasks/advance-no-gate.ts`, `packages/server/src/routes/task-advance.ts`, `packages/web/src/features/board/AdvanceNoGate.tsx` | 032 |
+| `tests/spine/harness.ts`, `tests/spine/spine.e2e.test.ts`, `tests/README.md` | 011 |
+| `tests/coordination/claim-complete.test.ts`, `dependencies.test.ts`, `guard.test.ts`, `planning.test.ts` | 021 |
+| `tests/ui/board.test.tsx`, `tests/ui/chat.test.tsx` | 030 |
+
+## Decisions made
+
+Twelve questions the design left open have been settled and written into the tickets. Recorded here because several change behaviour the design describes differently.
+
+| Decision | Lands in |
+| --- | --- |
+| **Stack: TypeScript on Node 22, pnpm workspaces.** The design named no language for the office app itself. | all |
+| **File scopes are patterns** — literal files, directory prefixes or globs, mixed. Glob-vs-glob overlap that cannot be proven disjoint is reported as a **conflict**: a false conflict serialises one task, a false clearance causes the git conflict the registry exists to prevent. | 015 |
+| **Start working is the only gate.** Promotion spawns the department leads and they claim immediately — the design's "agents begin", read literally. Reviewing the draft batch *is* the approval. | 019, 025 |
+| **The spawn cap replaces the circuit breaker** as early-stage protection, since step 7 does not exist. Two limits: a per-project max concurrent agents (required config, no default) and a global memory floor from `/proc/meminfo`. A refused spawn **queues**, recording which limit refused it. | 018, 029 |
+| **Dependents unblock at `delivered`**, not `done` — the merge into `main-dev` is when the code they need exists. `done` is unchanged; only the unblock point moves. | 014 |
+| **Batch scope overlap is allowed when a dependency orders it** (direct or transitive), since the two tasks can never be active at once. Unordered overlap is still rejected, and the check re-runs on every later mutation of scope or dependencies. | 014, 019 |
+| **The guard fails open, but never silently** — ~2 s timeout, on-disk buffer when the orchestrator is unreachable, flush on recovery, retroactive conflict check, tasks flagged for review, degraded banner in the UI. | 020, 022, 024, 029 |
+| **Conversations belong to a task or a role slot; sessions are segments.** Role slots are first-class — leads never have tasks. The panel renders a labelled divider at each session boundary saying why it restarted and whether a handoff was restored: the human sees continuous history, the agent does not remember it, and the UI must not imply otherwise. | 010, 026 |
+| **Cards show time in the current state**, appended to the state chip — "paused · 2d" — from the last transition alone, no history walk. | 013, 024 |
+| **A minimal Task detail page ships in step 3**, so the card's click target is correct permanently. Later steps each add their own section. | 031 |
+| **Done shows a 7-day window** under day headers, with "+N earlier" applying a state filter on the existing filter bar. `state` joins the filter set. | 013, 023, 024 |
+| **First test target is a throwaway repo**, then a real project once step 3's acceptance pass clears. | 011, 030 |
+| **An interim "Advance (no gate yet)" control** stands in for `delivered` until step 6, because nothing in steps 1–3 can reach it. Labelled honestly, records who bypassed the gate, and is built as one deletable unit. | 032 |
+
+## Still open before starting
+
+Three are research deliverables — the spikes exist to answer them. The rest need a human.
+
+| Question | Blocks | Raised in |
+| --- | --- | --- |
+| Can an `http` hook block a `PreToolUse`, or is a `command` script required? | 005, 009, 020 | 002 |
+| What field correlates a hook payload to an orchestrator-started session? | 008, 009, 010 | 002 |
+| How is a per-role MCP server attached, and how does a tool call prove which session is calling? | 017, 018 | 016 |
+| Numbers with no measurement behind them yet: per-project agent cap, global memory floor, lock TTL, pause deadline. All ship as required config with no default, so each is chosen rather than inherited. | 015, 018, 028 | 015, 018, 028 |
+| Who owns which department by default — the design's own open question. Low impact until a second account arrives at step 9. | 019 | 019 |
+| Who pays for the tokens the verification tickets spend. | 011, 030 | 011 |
+
+## Carried to later steps
+
+Decided now, implemented later. Listed so the step that owns each does not have to rediscover it.
+
+| Requirement | Step |
+| --- | :-: |
+| On revert, notify leads by **both** paths — file-scope overlap and dependency edge. A dependent touching none of the reverted files is still affected. | 4 |
+| The send-back dialog states how many dependents already started. It warns; it does not block. | 4 |
+| Send-back of a task whose files are held by an active dependent must not auto-reopen — flag it, let a human pause the dependent or queue the reopen. | 4 |
+| Surface observed peak per-agent memory on the Usage page, so the per-project cap can be revisited against real data. | 7 |
+| Preview containers are subject to the same global memory floor, and are heavier than agents. | 8 |
+| **Required acceptance criterion, to be copied onto step 6's QA-gate ticket as a checkbox:** "The no-gate advance control is deleted and the QA gate replaces it: `advance-no-gate.ts`, `task-advance.ts`, `AdvanceNoGate.tsx` removed, and `0012_gate_bypass.sql` unwound once no task depends on the flag." | 6 |
+
+## What steps 1–3 deliberately leave inert
+
+Named seams that exist and no-op, so the step that fills them cannot forget:
+
+- `complete_task` does not rebase, push, or open a PR — step 4.
+- Pause does not commit WIP or write a handoff node — steps 4 and 5.
+- Resume respawns with the task brief only, no handoff — step 5.
+- Token cost has no source and renders as "not measured yet" — step 7.
+- Live model switching is shown as unavailable — step 11.
+- There is no authentication; the app must not leave a trusted network — step 9.
