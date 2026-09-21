@@ -2,38 +2,52 @@
 
 **Ticket:** [003](../tasks/003-spike-tmux-tui-control.md) · **Harness:** [`spikes/tmux/drive-session.sh`](../../spikes/tmux/drive-session.sh)
 
-> ## Measurements are DEFERRED. This document contains no numbers from the target.
+> ## These are WSL numbers. They are provisional, and ticket 007 re-measures on the VPS.
 >
 > Every question this spike exists to answer is timing-, memory- or `sudo`-dependent, and the
-> machine available when it was run is a **Windows host with a WSL2 Ubuntu**. The target is a Linux
-> VPS with an `office` user and a scoped sudoers file. Timings measured against a WSL2 kernel, RSS
-> measured against WSL2's memory accounting, and `sudo -u` behaviour measured on a box where `sudo`
-> demands a password would all be wrong in ways nobody could see later. A findings doc carrying
-> numbers like that is worse than one that is honestly empty, because the numbers get copied into
-> ticket 007's adapter and ticket 018's cap and never questioned again.
+> machine available is a **Windows host with a WSL2 Ubuntu**. The target is a Linux VPS with an
+> `office` user and a scoped sudoers file. Timings measured against a WSL2 kernel, RSS measured
+> against WSL2's memory accounting, and `sudo -u` behaviour measured on a box where `sudo` demands
+> a password would all be wrong in ways nobody could see later. A findings doc carrying numbers
+> like that as settled fact is worse than one that is honestly empty, because the numbers get
+> copied into ticket 007's adapter and ticket 018's cap and never questioned again.
 >
-> **So this spike built the instrument and did not fake the reading.** The harness runs unmodified
-> on the VPS and emits every measurement the ticket asks for, as TSV, one row per trial. Each
-> section below names the exact command that answers it.
+> The first pass therefore built the instrument and deliberately took no reading — the login had
+> expired. **This pass ran it against a working login on WSL.** What follows is a *WSL reading*:
+> better than nothing, not the final answer. Every section states the environment it was measured
+> in, inline. **No figure here may be promoted into a settled fact or copied into config**; the
+> [Carried requirement](#carried-requirement) — ticket 007 re-measures on the VPS — stands
+> unchanged.
+>
+> One criterion is still genuinely unanswerable here and is left **DEFERRED, NOT ATTEMPTED**:
+> [§7 `sudo -u` parity](#7-does-sudo--u-user-tmux--behave-identically-to-running-as-that-user--deferred-not-attempted).
 >
 > The table of [downstream exposure](#downstream-exposure) is the load-bearing part of this
-> document: it lists every ticket whose assumptions depend on a number that does not exist yet, so
-> nothing proceeds silently on a placeholder.
+> document: it now marks which rows the WSL run closes, which it narrows, and which are still open.
 
 ## What was observed on, and what that means
+
+The environment below applies to every measurement in this document unless a section says
+otherwise; each section repeats it in short form so no figure can be read without it.
 
 | | |
 | --- | --- |
 | Host | Windows 10 Pro 19045, WSL2, kernel `6.18.33.2-microsoft-standard-WSL2` |
 | Distro | Ubuntu 24.04.4 LTS, 8 GB assigned (`MemTotal` 8 097 908 KB) |
 | tmux | 3.4 (Ubuntu package) |
-| Claude Code | **2.1.178 at the start of the spike, 2.1.278 by the end** — it auto-updated mid-session, see [Incidental observations](#incidental-observations) |
-| Login | **expired** — every submitted turn returned `API Error: 401 OAuth access token is invalid` |
-| `sudo` | requires a password for this user; `sudo -u` was never attempted |
+| Claude Code | **2.1.278 at the start of the measurement run, 2.1.278 at the end** — checked both times, it did not move. An earlier pass saw it auto-update 2.1.178 → 2.1.278, see [Incidental observations](#incidental-observations) |
+| Model / plan | `--model sonnet` (Sonnet 5), Claude Pro — the cheapest option, chosen because the trials spend real tokens |
+| Login | **working** — the earlier pass's expired login is what deferred these measurements in the first place |
+| Working dir | `~/spike003-tmp/proj`, a throwaway git repo — **not** the orchestrator repo |
+| `sudo` | requires a password for this user, and there is no `office` user; `sudo -u` still never attempted |
+| Permission mode | **auto mode was active** — this matters, see §1 and [Incidental observations](#incidental-observations) |
 
-The expired login is why the turn-dependent trials could not be run even provisionally: an agent
-that cannot take a turn cannot be measured mid-turn, interrupted, or asked to echo a string back.
-It also means **this spike spent no tokens**.
+**Why a WSL figure is not a VPS figure**, restated because it is the easiest thing to forget when
+copying a number out of a table: WSL2 runs a Microsoft-patched kernel inside a Hyper-V utility VM
+with dynamically ballooned memory, so RSS attribution and reclaim have no counterpart on the VPS;
+the agents measured here carry no MCP servers, no hooks, no `--agent` role file and an empty repo,
+where real ones carry all four; and `sudo -u`, the account layout and the tmux socket topology are
+the VPS's alone.
 
 ## Running the harness on the VPS
 
@@ -57,109 +71,404 @@ create, so it is safe to run on a box where other people have tmux sessions open
 
 Paste `003-results.tsv` into each section below, replacing the DEFERRED banner with the rows.
 
+### How the WSL pass in this document was invoked, verbatim
+
+Recorded so the rows below are reproducible and so the VPS run can be compared against a known
+invocation. Each subcommand was run from a Windows host through WSL, one `wsl.exe` call per run —
+**a backgrounded process does not survive between `wsl.exe` invocations, so anything long-lived has
+to live inside tmux** (the harness already does this; a hand-rolled replacement will not).
+
+```sh
+# inside WSL: bash -l, so nvm puts node 22 and `claude` on PATH
+export SPIKE_CLAUDE_ARGS="--model sonnet"     # cheapest model on this login
+export SPIKE_PROJECT_DIR="$HOME/spike003-tmp/proj"
+export SPIKE_REPLY_TIMEOUT=45                 # chars run only: fail fast rather than 180 s
+
+bash spikes/tmux/drive-session.sh chars --mode echo
+bash spikes/tmux/drive-session.sh session-end --trials 3
+bash spikes/tmux/drive-session.sh session-end --trials 3 --midturn
+bash spikes/tmux/drive-session.sh rss --samples 12 --interval 1 --midturn
+bash spikes/tmux/drive-session.sh interrupt --trials 3
+bash spikes/tmux/drive-session.sh interrupt --trials 3 --with-queued
+bash spikes/tmux/drive-session.sh deliver --state idle    --trials 8
+bash spikes/tmux/drive-session.sh deliver --state midturn --trials 5
+bash spikes/tmux/drive-session.sh deliver --state prompt  --trials 3
+```
+
+`SPIKE_USER` was left empty, so tmux ran as the invoking user with **no `sudo` in the path** — which
+is *not* what the VPS will do. Every row below inherits that caveat.
+
 ---
 
 ## Findings by acceptance criterion
 
-### 1. Does `send-keys "<text>" Enter` deliver reliably when the agent is idle, mid-turn, and at a permission prompt? — **DEFERRED**
+### 1. Does `send-keys "<text>" Enter` deliver reliably when the agent is idle, mid-turn, and at a permission prompt? — **MEASURED (WSL)**
+
+> **Environment for this section:** WSL2 kernel `6.18.33.2-microsoft-standard-WSL2`, Ubuntu 24.04.4
+> LTS, tmux 3.4, Claude Code **2.1.278**, `--model sonnet`, no `sudo` in the tmux path.
+> Provisional — ticket 007 re-measures on the VPS.
 
 ```sh
-./drive-session.sh deliver --state idle    --trials 20
-./drive-session.sh deliver --state midturn --trials 20
-./drive-session.sh deliver --state prompt  --trials 20
+bash spikes/tmux/drive-session.sh deliver --state idle    --trials 8
+bash spikes/tmux/drive-session.sh deliver --state midturn --trials 5   # plus 3 at SPIKE_MIDTURN_DELAY=1
+SPIKE_PERMISSION_PROMPT='Use the Bash tool to run: touch …/PERMRAN.txt' \
+  bash spikes/tmux/drive-session.sh deliver --state prompt --trials 3  # --permission-mode default
 ```
 
 Each trial sends a message asking for an assembled token back (`ACK` + digits the prompt names but
 never spells out, so the harness cannot match its own echoed prompt and report a round trip from an
-agent that never answered — an earlier version of the harness did exactly that, and reported 14 ms).
-Outcomes per row: `ok` with a latency, `stuck_in_composer`, `timeout`, `auth_failed`.
+agent that never answered — an earlier version did exactly that and reported 14 ms).
 
-The permission-prompt trials additionally classify what an injected message does to a live dialog:
-`dialog_answered` / `answered_and_replied` (the message selected an option — the outcome the
-design's "do not build keystroke injection to answer prompts" rule exists to avoid),
-`text_into_dialog`, `ignored`. **Record the failure count per state, out of 20.**
+| State | N | Delivered | Failures | Latency |
+| --- | --- | --- | --- | --- |
+| **idle** | 8 | **8/8 `ok`** | 0 — no `stuck_in_composer`, no `timeout` | 1 299 – 4 418 ms; the 4 418 ms is the first trial of a fresh session, the other seven are 1 299 – 1 949 ms |
+| **mid-turn** | 8 | **8/8 `queued`** | 0 dropped, 0 interleaved | see [§2](#2-what-happens-to-a-message-sent-mid-turn-queued-dropped-or-interleaved--measured-wsl-queued-88) |
+| **at a permission prompt** | 3 | 3/3 delivered — **and all three approved the pending tool call** | **3/3 is the failure**, see below | ~3 330 ms |
 
-Known, unmeasured: `tmux has-session` returning true does **not** mean the agent can receive a
-message. See [Incidental observations](#incidental-observations) — a first-run dialog can hold the
-TUI for as long as nobody answers it.
+**N is 8 / 8 / 3, not the 20 each the ticket asks for.** Reduced deliberately: a rate limit had
+already killed one attempt at this spike and a second agent was consuming the same quota. An honest
+small N is recorded rather than an aborted large one.
 
-### 2. What happens to a message sent mid-turn: queued, dropped, or interleaved? — **DEFERRED**
+#### ⚠ A chat message delivered while a permission dialog is up **approves it**. 3/3.
+
+This is the outcome the design's "do not build keystroke injection to answer permission prompts"
+rule exists to prevent, and it is reachable through the **ordinary chat path**, with no keystroke
+injection feature anywhere in the system. `send_message` is `send-keys -l -- "<text>"` followed by
+`send-keys Enter`; the dialog ignores the text and **the Enter selects the highlighted default,
+`1. Yes`**.
+
+Ground truth from the session transcript — not the pane, and not the harness's own labels:
+
+| # | Tool call pending in the dialog | What the injected chat message did |
+| --- | --- | --- |
+| 1 | `ls -la /home/gluy/spike003-tmp/out …` | **approved — the command ran**, output returned to the agent |
+| — | `touch …/PERMRAN.txt` | refused — this is the harness's *deliberate* Escape between trials (`The user doesn't want to proceed with this tool use`) |
+| 2 | `touch …/PERMRAN.txt` | **approved — ran** |
+| 3 | `touch …/PERMRAN.txt` | **approved — ran again, "timestamp updated"** |
+
+`PERMRAN.txt` exists on disk afterwards. The file is the proof: the dialog's highlighted option was
+selected by a message whose text was "Reply with exactly the three capital letters ACK…".
+
+**Consequences that belong to other tickets:**
+
+- **008 must not deliver a queued message while a dialog is up.** Since mid-turn messages queue
+  (§2) and a permission dialog can appear at any point in a turn, an orchestrator that flushes its
+  queue on a timer will eventually approve a tool call nobody approved. Dialog state has to gate
+  delivery.
+- **027's banner guidance ("open that tmux session and answer there") is still right**, but the
+  system has an unintended keystroke path into permission decisions, and the ticket should say so.
+- The harness's own row labels for this state (`changed_other`, `dialog_dismissed`) **understated
+  what happened** — see [Harness status](#harness-status); the transcript and the created file are
+  the evidence, the labels are not.
+
+#### Not every tool call raises a dialog
+
+With `--permission-mode default`, `echo spike003-permission-probe` — the harness's built-in probe —
+**ran with no dialog at all**, on a machine with no allowlist in `~/.claude/settings.json` and no
+project-level `settings.local.json`. Claude Code 2.1.278 decides some commands are safe enough not
+to ask. The probe had to be changed to a *write* (`touch`) to produce a dialog. Anything reasoning
+about "the agent is blocked on a permission prompt" as a predictable state should know that the
+state depends on the command, not just on the mode.
+
+Also note the default permission mode is **not** what a bare `claude` starts in here: sessions came
+up in `⏵⏵ auto mode`, which handles these prompts by itself, and had to be forced to
+`--permission-mode default` for a dialog to be reachable at all.
+
+Known and confirmed: `tmux has-session` returning true does **not** mean the agent can receive a
+message, and neither does the presence of `? for shortcuts` — see
+[Incidental observations](#incidental-observations) items 3 and 3b.
+
+### 2. What happens to a message sent mid-turn: queued, dropped, or interleaved? — **MEASURED (WSL): queued, 8/8**
+
+> **Environment for this section:** WSL2 kernel `6.18.33.2-microsoft-standard-WSL2`, Ubuntu 24.04.4
+> LTS, tmux 3.4, Claude Code **2.1.278**, `--model sonnet`, no `sudo` in the tmux path.
+> Provisional — ticket 007 re-measures on the VPS.
 
 ```sh
-./drive-session.sh deliver --state midturn --trials 20
+bash spikes/tmux/drive-session.sh deliver --state midturn --trials 5                        # sent 4 s into the turn
+SPIKE_MIDTURN_DELAY=1 bash spikes/tmux/drive-session.sh deliver --state midturn --trials 3  # sent 1 s into the turn
 ```
 
-The harness classifies each mid-turn message as `queued` (token arrived after the turn ended, with
-the queue latency), `interleaved` (token arrived while the first turn was still running),
-`dropped`, or `stuck_in_composer`, and records turn-end time alongside so the two can be separated.
+| Sent into a running turn at | N | `queued` | `interleaved` | `dropped` | `stuck_in_composer` |
+| --- | --- | --- | --- | --- | --- |
+| 4 s (≈ 0.3 s before the turn ended) | 5 | **5** | 0 | 0 | 0 |
+| 1 s (seconds of genuine overlap) | 3 | **3** | 0 | 0 | 0 |
 
-**This open question stays open. Ticket 008 must not assume tmux holds the queue.** The design's
-chat model — "a message queues until the agent's current turn ends" — is an assumption about the
-TUI's input buffer that nobody has tested. If mid-turn delivery proves unreliable, the queue moves
-into the orchestrator, which is ticket 008's stated fallback and changes its schema (a durable
-queue that survives an orchestrator restart).
+**The TUI holds the queue. The design's chat model — "a message queues until the agent's current
+turn ends" — is correct on this build.** End-to-end latency from send to reply, i.e. the remainder
+of the running turn plus the queued turn: 1 942 – 6 282 ms at the 4 s delay, 5 737 – 9 012 ms at
+the 1 s delay.
 
-### 3. Does `send-keys Escape` halt the turn without killing the session, and how fast? — **DEFERRED**
+**The running turn is not truncated.** Verified in the transcript, not on the pane: in all eight
+trials the interrupted-looking long turn in fact ran to completion (a full 1→60 count, 1 756 and
+2 129 characters respectively, ending on the sentence about 60), and only then was the queued
+message answered. Strict alternation, no interleaving, nothing lost.
+
+**For ticket 008:** tmux *can* be trusted with the queue on this evidence, so the orchestrator-side
+durable queue is not forced. Before relying on it, note what is untested: N = 8, one message deep,
+on WSL. Nothing here says what happens when *several* messages are queued behind one turn, or when
+a message arrives while a permission dialog is up (§1) — and "the TUI holds it" means the queue
+dies with the session, so a queued-but-undelivered message is lost on a kill and **survives an
+Interrupt and then runs** (§3).
+
+#### A trap for anyone polling the TUI: the busy marker lies once a message is queued
+
+The harness reports "turn end" from the disappearance of `esc to interrupt`. Across all eight
+trials that marker cleared **148 – 342 ms after the second message was submitted** — including the
+trial where the message was sent just 1 s into a turn that the transcript proves ran for several
+seconds more. The marker is not tracking the turn; it clears when the composer takes the submitted
+message.
+
+**Anything that decides "is this agent busy?" by scraping `esc to interrupt` will report an agent
+as idle while it is still working**, as soon as one message has been queued to it. That affects
+ticket 007's adapter, ticket 008's state machine and ticket 026's "the agent is working" affordance.
+The "turn end" values in the TSV appendix carry this artefact and should be read as "busy marker
+cleared", not "turn finished".
+
+### 3. Does `send-keys Escape` halt the turn without killing the session, and how fast? — **MEASURED (WSL): yes, ~124 ms**
+
+> **Environment for this section:** WSL2 kernel `6.18.33.2-microsoft-standard-WSL2`, Ubuntu 24.04.4
+> LTS, tmux 3.4, Claude Code **2.1.278**, `--model sonnet`, no `sudo` in the tmux path.
+> Provisional — ticket 007 re-measures on the VPS.
 
 ```sh
-./drive-session.sh interrupt --trials 20 --with-queued
+bash spikes/tmux/drive-session.sh interrupt --trials 3
+bash spikes/tmux/drive-session.sh interrupt --trials 3 --with-queued
 ```
 
-Per trial: milliseconds from the Escape keystroke to the busy indicator clearing, and whether
-`has-session` still reports the session afterwards (`ok` vs `session_died`).
+| Variant | N | Outcome | Escape → idle |
+| --- | --- | --- | --- |
+| Escape mid-turn, nothing queued | 3 | **3/3 `ok`** — turn halted, `has-session` still true, pane shows an interrupted marker | **124, 123, 125 ms** |
+| Escape mid-turn, a message queued 1 s earlier | 3 | **3/3 `ok`**, session alive | 2 189, 2 918, 1 391 ms — **see below, this is not Escape latency** |
 
-`--with-queued` also answers the ticket's third open question — what Interrupt does to a message
-that was queued but not yet delivered. Rows come back as `queued-after-escape delivered` or
-`discarded`. Record the observation; the product decision belongs to ticket 027.
+**Escape halts the turn and leaves the session alive: 3/3, ~124 ms, no `session_died` row.**
+Ticket 007's `sendEscape` contract and ticket 008's "returns within 2 s and leaves the session
+`running`" both hold with an order of magnitude to spare — on WSL, at N = 3. Ticket 027's
+"reflects its effect within two seconds" likewise.
 
-### 4. Do quotes, backticks, dollars, semicolons, newlines and non-ASCII survive delivery? — **DEFERRED**
+#### What Interrupt does to a queued message — ticket 027's open question
+
+**The queued message survives the interrupt and runs immediately afterwards. 3/3.** From the pane
+snapshot of trial 1, in order:
+
+```
+30. Thirty marks three full decades.
+31. Thirty-one is often the number
+⎿  Interrupted · What should Claude do instead?
+❯ Reply with exactly the three capital letters ACK followed immediately by the characters 93494q1 …
+● ACK93494q1
+```
+
+The long turn was genuinely cut off mid-sentence at 31 of 60. The message that had been sent one
+second before the Escape was **not discarded** — it became the next turn and was answered.
+
+This also explains the second row's timings: the harness measures "Escape until the pane is no
+longer busy", and with a queued message the pane goes busy again *with that message's turn*, so
+1 391 – 2 918 ms is Escape-plus-the-queued-turn, **not** Escape latency. The clean figure is 124 ms.
+
+**For ticket 027 this is a product decision, not a bug:** on this build, Interrupt means "stop what
+you are doing and start on the next thing I said", not "stop". If Interrupt is meant to mean stop,
+the orchestrator has to drain its own queue as part of the interrupt, and the UI must not describe
+Interrupt as cancelling pending messages.
+
+**Also relevant to ticket 010:** the interrupted turn leaves `Interrupted · What should Claude do
+instead?` in the pane. Whether that fires `Stop` was not captured here — the interrupt trials ran
+without the hook settings file. What *is* known is the neighbouring case: a turn ended by
+`kill-session` fires **no `Stop` at all** ([§5](#5-does-tmux-kill-session-reliably-fire-sessionend--measured-wsl-yes-88)).
+
+### 4. Do quotes, backticks, dollars, semicolons, newlines and non-ASCII survive delivery? — **MEASURED (WSL)**
+
+> **Environment for this section:** WSL2 kernel `6.18.33.2-microsoft-standard-WSL2`, Ubuntu 24.04.4
+> LTS, tmux 3.4, Claude Code **2.1.278**, `--model sonnet`, no `sudo` in the tmux path.
+> Provisional — ticket 007 re-measures on the VPS.
 
 ```sh
-./drive-session.sh chars --mode compose   # free: types into the composer, never presses Enter
-./drive-session.sh chars --mode echo      # spends tokens: submits and asks the agent to echo it back
+bash spikes/tmux/drive-session.sh chars --mode echo    # SPIKE_REPLY_TIMEOUT=45
 ```
 
 Nine payloads (double quote, single quote, backtick, dollar, semicolon, shell metacharacters,
 non-ASCII including CJK and an emoji, embedded newline, and all of them combined) against four
-mechanisms (`send-keys`, `send-keys -l`, `load-buffer`+`paste-buffer`, and `paste-buffer -p`
-bracketed), plus a payload-size probe at 1 000 / 4 000 / 16 000 / 65 536 characters.
+mechanisms, **36 trials, echo mode**, i.e. what the *agent* received, not what the composer showed.
 
-**The criterion is only satisfied by `--mode echo`**, because it asks what the *agent* received.
-Compose mode measures what tmux delivered to the TUI's input box, which is a different question —
-necessary but not sufficient. Ticket 007 needs the verbatim working invocation; that is the mechanism
-whose `--mode echo` rows come back `echoed_intact` for every payload.
+| Payload | `send-keys` | `send-keys -l` | `load-buffer`+`paste-buffer` | `paste-buffer -p` |
+| --- | --- | --- | --- | --- |
+| `she said "hello" to me` | intact | intact | intact | intact |
+| `it's an agent's job` | intact | intact | intact | intact |
+| ``run `whoami` now`` | intact | intact | intact | intact |
+| `cost is $HOME and $(id -u)` | intact | intact | intact | intact |
+| `first; rm -rf ~; second` | intact | intact | intact | intact |
+| `a|b&c>d<e*f?g[h]i{j}k` | intact | intact | intact | intact |
+| `café naïve 你好 — ✅` | intact | intact | intact | intact |
+| `line one`⏎`line two` | intact | intact | **SPLIT INTO TWO TURNS** | intact |
+| all of the above combined | intact | intact | intact | intact |
 
-Compose-mode results were produced while validating the harness and are recorded, clearly
-unpromoted, under [Incidental observations](#incidental-observations). They already contain one
-result that should change how 007 is written.
+**35 of 36 `echoed_intact`; 1 `not_received`.** Round-trip latency for the 35 intact trials:
+**min 1 342 ms, mean 1 626 ms, max 2 504 ms** (WSL, Sonnet, a one-line echo task — a floor for
+latency, not a model of real turns).
 
-### 5. Does `tmux kill-session` reliably fire SessionEnd? — **DEFERRED**
+#### The measurement method had to change, and this is itself a finding
 
-```sh
-./drive-session.sh session-end --trials 5
-./drive-session.sh session-end --trials 5 --midturn    # killed mid-turn, the harder case
+**The pane cannot answer this question.** The TUI renders messages as markdown, so the payload
+``run `whoami` now`` is drawn — in both the user message and the reply — as `run whoami now`. A
+`capture-pane` grep therefore reports a payload that arrived **byte for byte intact** as mangled.
+The first attempt at this run did exactly that and was on course to record "backticks do not
+survive tmux delivery", which is false, and which would have been written straight into ticket
+007's `shell-quote.ts`.
+
+The harness now reads **Claude Code's own JSONL transcript** (`~/.claude/projects/<slug>/*.jsonl`),
+counting occurrences of the payload in `"type":"user"` lines (what the agent received) and
+`"role":"assistant"` lines (what it echoed), against a baseline taken before each submit. That is a
+direct answer to the ticket's wording — "what the agent actually received" — rather than a proxy.
+Anything downstream that asserts on message content, **ticket 011 included, must do the same**.
+
+#### The failure, at the agent, not at the composer
+
+Plain `load-buffer` + `paste-buffer` with an embedded newline does not mangle the message — it
+**splits it into two separate turns**. From the transcript, three consecutive user messages:
+
+```
+line one\nline two <- repeat the text before this arrow back to me exactly once, with nothing else.   (send-keys -l: one message, intact)
+line one                                                                                              (paste-buffer: half a message, sent alone)
+line two <- repeat the text before this arrow back to me exactly once, with nothing else.             (paste-buffer: the rest, as a second turn)
 ```
 
-The harness writes a throwaway settings file (passed with `--settings`, so no global config is
-touched) whose `SessionEnd` hook appends a timestamped line, then measures kill-to-hook latency per
-trial. Run **both** variants: a kill while idle and a kill mid-turn are different races.
+The agent answered the first half on its own — *"It looks like your message just says 'line one' —
+did you mean to include more text or the repeat instruction?"* — and then answered the remainder.
+**No error is raised anywhere.** A chat message containing a newline becomes two turns, one of them
+nonsense, and the orchestrator has no way to know.
 
-This is the criterion ticket 015 is waiting on. A `not_fired` row, even one in twenty, means lock
-release may not depend on this path and the TTL stops being a backstop and becomes the primary
-mechanism — which puts the still-undecided TTL value on the critical path.
+#### Bare `send-keys` passed, and must still not be used
 
-### 6. RSS of an idle and a mid-turn `claude` process — **DEFERRED** (a provisional idle figure is below)
+All nine payloads round-tripped intact through bare `send-keys "<text>"` — but that is a property
+of *these payloads*, not of the mechanism. tmux parses each argument as a key name first. A
+separate zero-token probe (a pane running `cat`, so the received bytes are visible directly):
+
+| Sent | Bytes that arrived |
+| --- | --- |
+| `tmux send-keys -t <s> 'Enter'` | a newline — tmux executed the **Enter key**; the word never arrived |
+| `tmux send-keys -t <s> -l -- 'Enter'` | `Enter` |
+
+A user whose chat message is exactly `Enter` (or `Escape`, `C-c`, `Space`, `Up`…) would have it
+executed as a keystroke instead of delivered. The matrix contains no such payload, so it passed.
+
+#### Decision for ticket 007 — the invocation, verbatim
 
 ```sh
-./drive-session.sh rss --samples 20 --interval 1 --midturn
+tmux send-keys -t "$SESSION" -l -- "$TEXT"    # the whole message, one argument, verbatim
+sleep 0.3                                      # the TUI needs the composer settled before submit
+tmux send-keys -t "$SESSION" Enter             # submit as a SEPARATE call
 ```
 
-Samples the whole pane process tree — not just the `claude` pid — because the per-project cap has to
-be set against what the box actually loses per agent. Emits per-sample rows, an idle peak, a
-mid-turn peak, and `MemTotal` / `MemAvailable` from `/proc/meminfo` so the cap and ticket 018's
-memory floor can be reasoned about against real capacity.
+`send-keys -l --` is the mechanism: intact on all nine payloads including the embedded newline, no
+key-name parsing, no bracketed-paste dependency. `--` matters — without it a payload starting with
+`-` is read as a flag. `paste-buffer -p` (bracketed) was equally intact on all nine and is the
+fallback if a payload ever exceeds what one argv element can carry; **plain `paste-buffer` without
+`-p` must not be used at all.**
 
-See [Provisional RSS](#provisional-rss-wsl-only-not-the-target) — idle only, and not from the target.
+Note that `shell-quote.ts`, as ticket 007 names it, is a misleading name for what this needs: there
+is **no shell** in this path and nothing to shell-quote. `send-keys -l --` takes the text as a
+single `execve` argument, so the required encoding is *none* — the module's real job is to refuse
+or split what cannot be delivered (see the size question below), not to escape anything.
+
+#### Still open: the payload-size limit — **DEFERRED**
+
+The size probe (1 000 / 4 000 / 16 000 / 65 536 characters, via `load-buffer`) came back
+`collapsed_to_placeholder` at **every** size: the composer replaces the text with `[Pasted text #N]`,
+so the pane cannot confirm what arrived. **These payloads were never submitted**, so nothing is
+known about what the agent would receive. Ticket 007's "state the measured limit in a code comment"
+is therefore still unanswered — but it is now *answerable*: submit each size and count the payload
+in the transcript, exactly as the character matrix does. It was left out of this pass to keep token
+spend down.
+
+### 5. Does `tmux kill-session` reliably fire SessionEnd? — **MEASURED (WSL): yes, 8/8**
+
+> **Environment for this section:** WSL2 kernel `6.18.33.2-microsoft-standard-WSL2`, Ubuntu 24.04.4
+> LTS, tmux 3.4, Claude Code **2.1.278**, `--model sonnet`, no `sudo` in the tmux path.
+> Provisional — ticket 007 re-measures on the VPS.
+
+```sh
+bash spikes/tmux/drive-session.sh session-end --trials 5
+bash spikes/tmux/drive-session.sh session-end --trials 3 --midturn
+```
+
+| Variant | N | Fired | Kill-to-hook latency |
+| --- | --- | --- | --- |
+| Killed while **idle** at the prompt | 5 | **5/5** | 225, 231, 231, 238, 241 ms |
+| Killed **mid-turn** (4 s into a running turn) | 3 | **3/3** | 121, 123, 144 ms |
+
+**No `not_fired` row in either variant.** A mid-turn kill fires the hook roughly *twice as fast* as
+an idle one, consistently — the opposite of the intuition that the harder case is the slower one.
+N is small (8 total) and the mid-turn N is 3, below the ticket's 5; that was a budget choice, and
+3/3 is not 20/20.
+
+The hook payload for a `kill-session` carries everything a lock-release path needs:
+
+```json
+{"session_id":"b219554e-…","transcript_path":"/home/gluy/.claude/projects/…/b219554e-….jsonl",
+ "cwd":"/home/gluy/spike003-tmp/proj","scratchpad_dir":"/tmp/claude-1001/…/scratchpad",
+ "prompt_id":"9b334d22-…","hook_event_name":"SessionEnd","reason":"other"}
+```
+
+**`reason` is `"other"` for an external `kill-session`** — not a distinct value. Ticket 008 cannot
+tell "the orchestrator killed it", "a human killed the tmux session" and "something else ended it"
+apart from this field; it must infer that from its own state.
+
+**A mid-turn kill fires `SessionEnd` but never fires `Stop`.** The throwaway settings file
+registered `SessionStart`, `SessionEnd` and `Stop`; across the three mid-turn trials the hook log
+holds 3 `SessionStart` and 3 `SessionEnd` and **zero `Stop`**, although every session was killed
+with a turn in flight. Ticket 010 should note that a turn ended by a kill produces no `Stop` at all
+— the case it planned to handle as "an interrupted turn fires Stop with no assistant text" does not
+arise this way. (This is a *kill*, not an Escape interrupt; §3 covers Escape.)
+
+**For ticket 015:** on this evidence SessionEnd is a usable release path and the TTL stays a
+backstop rather than becoming primary. Two cautions before that is treated as settled: N = 8 on
+WSL with no `sudo` in the path, and the hook here is a `command` hook writing a line — it measures
+the hook *firing*, not the event reaching an orchestrator that must then be up to receive it.
+
+### 6. RSS of an idle and a mid-turn `claude` process — **MEASURED (WSL), mid-turn included**
+
+> **Environment for this section:** WSL2 kernel `6.18.33.2-microsoft-standard-WSL2`, Ubuntu 24.04.4
+> LTS, tmux 3.4, Claude Code **2.1.278**, `--model sonnet`, no `sudo` in the tmux path, 8 GB
+> assigned to the VM. **WSL2 memory accounting is not a VPS's** — see the caveats below.
+> Provisional — ticket 007 re-measures on the VPS.
+
+```sh
+bash spikes/tmux/drive-session.sh rss --samples 12 --interval 1 --midturn
+```
+
+Whole pane process tree, not just the `claude` pid. One session, 12 idle samples at 1 s, then the
+same session sampled through a live turn.
+
+| | KB | GB |
+| --- | --- | --- |
+| First sample, immediately after the prompt appears | 258 812 | 0.25 |
+| **Idle, settled** (11 samples) | **300 280 – 308 264** | ≈ 0.29 – 0.29 |
+| Idle peak | 308 264 | 0.29 |
+| **Mid-turn** (9 samples, the turn ended after 9) | **330 768 – 343 164** | ≈ 0.32 – 0.33 |
+| Mid-turn peak | 343 164 | 0.33 |
+| Host `MemTotal` | 8 097 908 | 7.72 |
+| Host `MemAvailable` at sample time | 6 689 092 | 6.38 |
+
+**Mid-turn costs about 11 % more than idle — roughly 35 MB, not a multiple.** That is the headline
+for ticket 018: mid-turn is *not* the cliff the cap was feared to need protecting against, at least
+for this kind of turn.
+
+**Read that with the caveats, all of which push the real number up:**
+
+- The measured turn was **"count from 1 to 60 with a sentence each" — no tools, no file reads, no
+  MCP servers, no hooks, no `--agent` role file, and an empty throwaway repo.** A real agent in
+  this system has all of those, and a turn that reads a large file or runs a subagent is a
+  different measurement entirely. 11 % is the floor of mid-turn growth, not its ceiling.
+- **WSL2 is not the VPS.** A Microsoft-patched kernel in a Hyper-V utility VM with ballooned
+  memory; RSS attribution for shared pages and reclaim behaviour have no counterpart on a bare
+  host.
+- One session, one turn. N = 1 for the mid-turn peak.
+
+If a number is needed before the VPS run: **≈ 0.31 GB idle, ≈ 0.34 GB mid-turn for a bare agent**,
+and treat **0.6 GB per agent** as the defensible planning figure — it covers the 2× spread seen
+between two Claude Code builds a day apart (below) and leaves room for the tooling a real agent
+carries. Record in ticket 018's config comment that the value is provisional and that the VPS run
+replaces it.
 
 ### 7. Does `sudo -u <user> tmux …` behave identically to running as that user? — **DEFERRED, NOT ATTEMPTED**
 
@@ -167,10 +476,17 @@ See [Provisional RSS](#provisional-rss-wsl-only-not-the-target) — idle only, a
 ./drive-session.sh sudo-parity
 ```
 
-`sudo` requires a password for the user available here, so nothing about this was tested — not even
-badly. This is the criterion with the least excuse for a guess: `$HOME`, `CLAUDE_CONFIG_DIR`, the
+**Still not attempted after the WSL measurement pass, and deliberately so.** `sudo` requires a
+password for the user available here and there is no `office` user and no agent user to become, so
+nothing about this was tested — not even badly. Running it would have produced a row saying
+`skipped`, which is what the harness emits when `SPIKE_USER` is unset; it would not have produced a
+finding. This is the criterion with the least excuse for a guess: `$HOME`, `CLAUDE_CONFIG_DIR`, the
 tmux socket path and cross-user visibility all depend on the real sudoers file, the real accounts
 and the real PAM configuration.
+
+Everything else in this document was measured with `SPIKE_USER` empty, i.e. **with no `sudo` in the
+tmux path at all**. The VPS adapter's every tmux call goes through `sudo -n -u`, so even the rows
+that are closed below are closed for the unwrapped case only.
 
 The harness checks: that the NOPASSWD rule exists at all; that `/usr/bin/tmux` is the permitted path
 byte for byte; whether the two users share a tmux socket or get one each (**if they share one, the
@@ -188,62 +504,49 @@ proceed on a placeholder.** Derived by reading the ticket files, not by memory.
 
 | Ticket | Assumption at risk | What breaks if the real measurement contradicts it | Answered by |
 | --- | --- | --- | --- |
-| **007** tmux adapter | "Every character class from ticket 003's findings round-trips into the agent's prompt intact, **using the mechanism that spike recorded**" — and `shell-quote.ts` is specified as "the message-delivery encoding **chosen in ticket 003**" | There is no chosen mechanism. Compose-mode validation already shows plain `paste-buffer` turning an embedded newline into Enter: the agent receives *half* a message and answers it, and the rest sits in the composer. An adapter built on the obvious mechanism ships that bug into every chat message containing a newline | `chars --mode echo` |
-| **007** | "A message longer than the tmux buffer limit is delivered whole or fails loudly — **state the measured limit in a code comment**" | No measured limit exists. Worse, the limit is not observable the easy way: pastes of 1 000 characters and up collapse into a `[Pasted text #N]` placeholder, so the composer cannot confirm what arrived. The comment would be fiction and the "fails loudly" branch would be untested | `chars --mode echo`, size rows |
-| **007** | "`newSession` … and `hasSession` reports it within 2 s" | The 2 s is a guess, and `hasSession` is the wrong readiness signal: tmux reports the session instantly while the TUI sits behind a trust prompt or an onboarding modal. 008 then marks the session `running` and sends a message that answers a dialog instead | `deliver --state idle` (startup rows), `doctor` |
-| **007** | "`sendEscape` halts a mid-turn agent and leaves the session alive" | Unverified. If Escape ends the session on this version, Interrupt is Kill and step 1's stated gate is not met | `interrupt` |
+| ~~**007** tmux adapter~~ **ANSWERED (WSL)** | "Every character class from ticket 003's findings round-trips into the agent's prompt intact, **using the mechanism that spike recorded**" — and `shell-quote.ts` is specified as "the message-delivery encoding **chosen in ticket 003**" | **Closed provisionally.** The mechanism is `send-keys -l -- "$TEXT"` then a separate `send-keys Enter`: 9/9 payloads intact at the agent, verified in the transcript ([§4](#4-do-quotes-backticks-dollars-semicolons-newlines-and-non-ascii-survive-delivery--measured-wsl)). Plain `paste-buffer` is confirmed to **split a newline-bearing message into two turns** at the agent, not just in the composer. Note `shell-quote.ts` is a misnomer — there is no shell in this path and the required escaping is none | `chars --mode echo` — **re-run on the VPS** |
+| **007** | "A message longer than the tmux buffer limit is delivered whole or fails loudly — **state the measured limit in a code comment**" | **Still open.** All four sizes (1 000 – 65 536) collapse to a `[Pasted text #N]` placeholder in the composer and were never submitted, so nothing is known about what the agent receives. Now *answerable* by the transcript method §4 uses; skipped this pass to limit token spend | `chars --mode echo`, size rows |
+| **007** **WORSE THAN THOUGHT** | "`newSession` … and `hasSession` reports it within 2 s" | Still wrong, and for a second reason now. `hasSession` was already the wrong signal (a dialog sits behind a live session); this pass also found the *pane* signal moving — `? for shortcuts` is replaced by `⏵⏵ auto mode on (shift+tab to cycle)` whenever a permission mode is active, and the harness declared a perfectly ready session `not_ready` for 90 s because of it. **007's readiness check must key on the composer's structure, not one hint string**, and must treat an unrecognised pane as not-ready | `deliver --state idle` (startup rows), `doctor` |
+| ~~**007**~~ **ANSWERED (WSL)** | "`sendEscape` halts a mid-turn agent and leaves the session alive" | **Closed provisionally: 3/3, ~124 ms, session alive every time**, pane shows an interrupted marker ([§3](#3-does-send-keys-escape-halt-the-turn-without-killing-the-session-and-how-fast--measured-wsl-124-ms)). Interrupt is not Kill on this build | `interrupt` — **re-run on the VPS** |
 | **007** | The scoped sudoers file, `$HOME` and `CLAUDE_CONFIG_DIR` resolution under `sudo -u` | Completely unmeasured. If the two users share a tmux socket, or `$HOME` does not follow, provisioning and session isolation are both wrong, and the failure looks like "the agent used the wrong login" | `sudo-parity` |
-| **008** session registry | "owns the session state machine **and the message queue if ticket 003 showed tmux cannot be trusted with it**"; open question: "whether a message sent to a mid-turn agent is queued by us or by tmux" | Unknown. If 008 assumes tmux queues and it does not, messages sent while an agent is working are silently lost — with a 200 response. The schema consequence is real: an orchestrator-side queue must survive a restart, which is a migration 008 has not planned for | `deliver --state midturn` |
-| **008** | "`POST /sessions/:id/interrupt` returns within 2 s and leaves the session `running`" | The 2 s budget has no measurement behind it, and "leaves it running" is criterion 3's unverified claim | `interrupt` |
-| **008** | "A SessionEnd event marks the row `ended` even when the kill came from outside the orchestrator" | If SessionEnd is unreliable, sessions linger as `running` forever and the UI shows agents that are gone | `session-end` |
-| **015** locks | Release on `SessionEnd` is one of the three paths the design says must all exist | If SessionEnd does not fire on kill, TTL expiry becomes the *only* release path for a killed agent — and the TTL value is itself an open question with no default. Files stay locked, dependent tasks serialise, and the failure is invisible until someone reads the registry | `session-end`, both variants |
-| **018** caps | **Stated outright in the ticket:** "Per-project max concurrent agents — required config, no default shipped. **Set from ticket 003's RSS measurement against the VPS's actual RAM**" | The cap's only stated input does not exist. Set it from the provisional WSL idle figure and it is wrong in both directions: mid-turn growth is entirely unmeasured (too high → OOM under load), and a VPS agent with MCP servers and hooks loaded is heavier than this bare one (too low → the spawn queue never drains and Start working looks broken) | `rss --midturn` on the VPS |
-| **018** | The global memory floor read from `/proc/meminfo` | The threshold needs a per-agent figure to be chosen against; without one, any value is arbitrary | `rss` host rows |
+| **008** session registry **ANSWERED (WSL), with a new hazard** | "owns the session state machine **and the message queue if ticket 003 showed tmux cannot be trusted with it**"; open question: "whether a message sent to a mid-turn agent is queued by us or by tmux" | **tmux/the TUI does hold the queue: 8/8 `queued`, nothing dropped, the running turn not truncated** ([§2](#2-what-happens-to-a-message-sent-mid-turn-queued-dropped-or-interleaved--measured-wsl-queued-88)), so the orchestrator-side durable queue is not forced. **Two new obligations instead:** (a) delivery must be gated on dialog state, because a message delivered while a permission dialog is up **approves it** ([§1](#1-does-send-keys-text-enter-deliver-reliably-when-the-agent-is-idle-mid-turn-and-at-a-permission-prompt--measured-wsl)); (b) `esc to interrupt` is not a busy signal once a message is queued — it clears within ~150–340 ms while the turn runs on | `deliver --state midturn` |
+| ~~**008**~~ **ANSWERED (WSL)** | "`POST /sessions/:id/interrupt` returns within 2 s and leaves the session `running`" | **Both hold with an order of magnitude to spare: ~124 ms, session alive 3/3.** Note the interrupt does *not* cancel a queued message — it runs next (§3) | `interrupt` |
+| **008** **NARROWED (WSL)** | "A SessionEnd event marks the row `ended` even when the kill came from outside the orchestrator" | SessionEnd fired **8/8** on `kill-session`, idle and mid-turn ([§5](#5-does-tmux-kill-session-reliably-fire-sessionend--measured-wsl-yes-88)), so the mechanism exists. But `reason` is `"other"` for every external kill — 008 **cannot** use the payload to tell an orchestrator kill from a human's `tmux kill-session`, and must infer that from its own state | `session-end` — **re-run on the VPS** |
+| **015** locks **ANSWERED (WSL)** | Release on `SessionEnd` is one of the three paths the design says must all exist | **Closed provisionally: SessionEnd fires on kill, 8/8** (5 idle at 225–241 ms, 3 mid-turn at 121–144 ms). TTL stays a *backstop*; it does not have to become the primary release path, and the undecided TTL value comes off the critical path. Caveats: N = 8, WSL, no `sudo` in the tmux path, and this measures the hook firing — not the event reaching an orchestrator that must be up to receive it | `session-end`, both variants — **re-run on the VPS** |
+| **018** caps **NARROWED (WSL)** | **Stated outright in the ticket:** "Per-project max concurrent agents — required config, no default shipped. **Set from ticket 003's RSS measurement against the VPS's actual RAM**" | **Mid-turn is no longer unmeasured**: ≈ 0.31 GB idle → ≈ 0.34 GB mid-turn, **+11 %, not a multiple** ([§6](#6-rss-of-an-idle-and-a-mid-turn-claude-process--measured-wsl-mid-turn-included)). The "mid-turn OOM cliff" fear is not supported for a no-tool turn. Still exposed in the other direction: the measured agent had no MCP servers, hooks, role file or repo, and the same build varies ~15 % run to run and ~2× between builds. Treat the figure as configuration with provenance, not a literal | `rss --midturn` on the VPS |
+| **018** | The global memory floor read from `/proc/meminfo` | Now has a per-agent figure to be chosen against (0.31 / 0.34 GB bare, 0.6 GB as the planning figure), on a host reporting `MemTotal` 8 097 908 KB / `MemAvailable` 6 689 092 KB — but the VPS's capacity is the one that matters | `rss` host rows |
 | **019** planning flow | "The protection that makes this safe is the spawn cap from ticket 018" | The safety property of the whole planning flow inherits 018's unfounded number | via 018 |
-| **026** chat panel | "The panel **makes clear that a message queues until the agent's current turn ends**" — copy shown to the user | If mid-turn messages are dropped or interleaved, the panel states something false, and the ticket's own worst case applies: "a message that vanished is indistinguishable from one the agent ignored" | `deliver --state midturn` |
-| **027** agent controls | "Interrupt … reflects its effect **within two seconds**"; open question about what Interrupt does to a queued-but-undelivered message | The 2 s is unmeasured. If Escape takes longer, the reflexive control the design cares most about feels broken; if a queued message survives the interrupt and runs afterwards, Interrupt does not mean stop | `interrupt --with-queued` |
-| **027** | "The banner tells the human what to do — open that tmux session and answer there" | Rests on the untested claim that an injected chat message cannot answer a permission dialog. If it *can*, the guidance is fine but the system has a keystroke path into permission decisions that nobody intended | `deliver --state prompt` |
-| **028** pause/stop | "Pause interrupts every agent … waits up to the configured deadline, then kills"; "Emergency stop … completes in under five seconds with ten sessions running" | The choreography is built on Escape latency and kill/SessionEnd timing. The five-second budget for ten sessions is a guess made without knowing what one kill costs. The pause deadline has no value at all | `interrupt`, `session-end` |
+| ~~**026** chat panel~~ **ANSWERED (WSL)** | "The panel **makes clear that a message queues until the agent's current turn ends**" — copy shown to the user | **The copy is true.** 8/8 queued and delivered at turn end, nothing dropped or interleaved (§2). The panel should additionally not claim the agent is idle from a pane scrape — the busy marker clears while the turn continues (§2) | `deliver --state midturn` |
+| ~~**027** agent controls~~ **ANSWERED (WSL)** | "Interrupt … reflects its effect **within two seconds**"; open question about what Interrupt does to a queued-but-undelivered message | 2 s budget met 16× over (~124 ms). **The open question now has an observed answer: the queued message is NOT discarded — it runs immediately after the interrupt, 3/3** (§3). On this build Interrupt means "stop and start the next thing I said". If it is meant to mean *stop*, 027 must drain the orchestrator's queue as part of the interrupt and must not describe Interrupt as cancelling pending messages | `interrupt --with-queued` |
+| **027** ⚠ **CONFIRMED HAZARD** | "The banner tells the human what to do — open that tmux session and answer there" | The guidance is fine, but the feared path is **real and reachable**: an ordinary chat message delivered while a permission dialog is up **selects the highlighted `1. Yes` and the tool runs — 3/3, verified in the transcript and by the file the approved command created** (§1). The system has a keystroke path into permission decisions that nobody intended. 027 should state it, and 008 must gate delivery on dialog state | `deliver --state prompt` |
+| **028** pause/stop **NARROWED (WSL)** | "Pause interrupts every agent … waits up to the configured deadline, then kills"; "Emergency stop … completes in under five seconds with ten sessions running" | The unit costs now exist: **Escape → idle ≈ 124 ms; kill → SessionEnd 121–241 ms.** Ten sessions at those costs fit inside five seconds with large margin *if the work is concurrent and the box is not saturated* — neither was tested (every measurement here is one session at a time). The pause deadline still has no value, and Pause must account for §3: an interrupted agent runs its queued message next unless the queue is drained | `interrupt`, `session-end` |
 | **029** stop controls UI | Shows the pause deadline and which limit refused each queued spawn | Displays 018's and 028's unfounded numbers to the user as if they were chosen | via 018, 028 |
 | **009** roles + provisioning | "A session started through ticket 008's API with `--agent dev-lead` reaches `running`, and its SessionStart event arrives" | Provisioning writes into a **fresh** `CLAUDE_CONFIG_DIR`, and a fresh config dir means first-run dialogs. Both a folder-trust prompt and an onboarding modal were observed blocking the prompt indefinitely. Provisioning must pre-seed whatever suppresses them, or every newly provisioned user hangs on its first session | `deliver --state idle` startup rows; `doctor` |
 | **009** | Provisioned settings are stable | Claude Code auto-updated itself **during this spike** and the new version introduced a new blocking modal. An orchestrator scraping the pane depends on TUI strings that change without anyone deploying anything | — pin or disable auto-update on the VPS |
-| **010** transcript | "A turn that ends with no assistant text (**tool call only, or an interrupted turn**) does not append an empty message" | Whether an Escape-interrupted turn fires `Stop`, `StopFailure`, or nothing is unknown; the assertion cannot be written until it is | `interrupt` + ticket 002's hook capture |
-| **011** spine e2e | Asserts round-trip latency, an intact special-character message, a mid-turn interrupt, and SessionEnd after a kill | Every one of these is a spike question. If 003 stays deferred, 011 is where all of them are discovered at once, against a full stack, with real tokens — the most expensive place to find them | all of the above |
-| **021** coordination tests | "Lock release, all three paths … **SessionEnd after a kill**"; "the suite leaves no tmux sessions behind" | A test written against an unreliable SessionEnd is flaky, and a flaky release test gets disabled rather than fixed | `session-end` |
+| **010** transcript **PARTLY ANSWERED (WSL)** | "A turn that ends with no assistant text (**tool call only, or an interrupted turn**) does not append an empty message" | Half answered: a turn ended by `kill-session` fires **`SessionEnd` but no `Stop` at all** (0 `Stop` lines across 3 mid-turn kills, with a `Stop` hook registered) — §5. The *Escape* case is still unknown: the interrupt trials ran without the hook settings file, so whether Escape fires `Stop`, `StopFailure` or nothing was not captured. Cheap to close: run `interrupt` with the `session-end` settings file | `interrupt` + ticket 002's hook capture |
+| **011** spine e2e **NARROWED** | Asserts round-trip latency, an intact special-character message, a mid-turn interrupt, and SessionEnd after a kill | All four now have provisional WSL numbers to assert against instead of being discovered against the full stack. **One hard warning for how 011 is written: it must not assert on message content by scraping the pane** — the TUI renders markdown, and a backtick payload that arrived intact reads as mangled on screen. Assert against the JSONL transcript (§4) | all of the above |
+| **021** coordination tests **NARROWED (WSL)** | "Lock release, all three paths … **SessionEnd after a kill**"; "the suite leaves no tmux sessions behind" | SessionEnd fired 8/8 with a tight spread (121–241 ms), so the release test has a real timing budget to assert against rather than a guess. Prefix-scoped cleanup also held throughout this pass — no `spike003-*` session or `claude` process was left behind across ~20 sessions | `session-end` |
 
 ---
 
-## Provisional RSS (WSL only — **not** the target)
+## RSS across builds — why the spread matters more than the number
 
-Recorded solely to unblock the per-project cap choice in ticket 018, which has no other input. It is
-**not a measurement of the target** and must not be copied into config as though it were.
+The measured figures are in [§6](#6-rss-of-an-idle-and-a-mid-turn-claude-process--measured-wsl-mid-turn-included).
+What that section cannot show on its own is how unstable the figure is **between Claude Code
+builds**, which is the part that should govern how ticket 018's cap is written.
 
-| | |
-| --- | --- |
-| **Idle, one `claude` process tree** | **≈ 262 000 – 266 000 KB (≈ 0.26 GB)**, steady across two fresh sessions, 8 + 5 samples at 2 s |
-| First sample after the prompt appears | up to 299 604 KB — allow for a startup spike |
-| On the pre-auto-update build (2.1.178), single process | 571 000 – 578 000 KB idle at the welcome screen, 350 000 KB after a failed turn — **a 2× spread between two builds a day apart** |
-| **Mid-turn** | **NOT MEASURED.** The login was rejected, so no turn ever ran |
-| Host context | `MemTotal` 8 097 908 KB, `MemAvailable` ≈ 6 700 000 KB at sample time |
+| Reading | Build | Idle | Mid-turn |
+| --- | --- | --- | --- |
+| This pass, process tree, 12 samples | 2.1.278 | 300 280 – 308 264 KB | 330 768 – 343 164 KB |
+| Earlier pass, process tree, 8 + 5 samples | 2.1.278 | ≈ 262 000 – 266 000 KB | not measured (login expired) |
+| Earlier pass, single process at the welcome screen | 2.1.178 | 571 000 – 578 000 KB | not measured |
 
-How it was obtained: `drive-session.sh rss --samples 8 --interval 2`, summing RSS across the tmux
-pane process and every descendant, on **WSL2 kernel 6.18.33.2-microsoft-standard-WSL2, Ubuntu
-24.04.4 LTS, Claude Code 2.1.278, tmux 3.4**.
+Two builds a day apart differ by **roughly 2×**, and two runs of the *same* build differ by ~15 %.
+The cap is therefore not a constant to be discovered once: **ticket 018 should treat the per-agent
+figure as configuration with a documented provenance, not as a literal in the code**, and ticket
+009's open question about pinning the CLI version on the VPS is partly a memory-budget question.
 
-Why it cannot stand in for the target:
-
-- **WSL2 memory accounting is not a VPS's.** It runs a Microsoft-patched kernel inside a Hyper-V
-  utility VM with dynamically ballooned memory; RSS attribution for shared pages and page cache
-  differs from a bare Linux host, and the VM's own reclaim behaviour has no counterpart on the VPS.
-- **The measured agent was doing nothing.** No turn, no MCP servers, no hooks, no `--agent` role
-  file, no repo of any size in the working directory. The real agents in this system have all of
-  those, and a mid-turn agent is the case the cap must survive.
-- **The version moved 2.1.178 → 2.1.278 mid-spike and the two readings differ by 2×.** Whatever the
-  cap is set from should come from the build actually deployed.
-
-If a number is needed before the VPS run: treat **0.6 GB per idle agent** as the defensible upper
-bound of what was seen here, treat mid-turn as unknown rather than as a multiple of it, and record
-in ticket 018's config comment that the value is provisional and where the real one comes from.
+All of these are WSL2 readings. None is a measurement of the target.
 
 ---
 
@@ -262,6 +565,15 @@ how downstream tickets should be written.
    it had to get past in the `startup` row. An orchestrator needs the same defence, plus a decision
    about pinning the CLI version on the VPS.
 3. **`has-session` is not readiness.** Both dialogs above sit behind a session tmux reports as alive.
+3b. **Neither is `? for shortcuts` — the readiness marker moves with the permission mode.** The
+   harness waited 90 s and reported `not_ready` against a session that was up and accepting input
+   the whole time. The hint line under the composer reads `? for shortcuts` only in the default
+   permission mode; with a mode active it is replaced by `⏵⏵ auto mode on (shift+tab to cycle)`.
+   Same build, same binary, different string. **Ticket 007's readiness check must not key on a
+   single hint-line string**: match the composer's structure (the U+2500 rules and the U+276F
+   marker) or accept a set of hint lines, and treat an unknown pane as not-ready rather than
+   ready. This is the second time in this spike that a TUI string moved under the harness; the
+   first was an auto-update.
 4. **Composer-level character delivery, `--mode compose`, 9 payloads × 4 mechanisms.** Every
    single-line payload — double quote, single quote, backtick, `$HOME` and `$(id -u)`,
    `first; rm -rf ~; second`, `a|b&c>d<e*f?g[h]i{j}k`, `café naïve 你好 — ✅` — arrived in the
@@ -287,22 +599,62 @@ how downstream tickets should be written.
    matched its own echoed prompt text and reported a 14 ms round trip from an agent whose login was
    rejected. The harness now asks the agent to *assemble* a token the prompt never spells out, and
    counts occurrences above the composer rather than anywhere on screen. Any future pane-based
-   assertion — including ticket 011's — needs the same care.
+   assertion — including ticket 011's — needs the same care. (Re-verified on a live login this
+   pass, at N = 2 before any full run: round trips of 3 889 ms and 2 829 ms, with the reply
+   carrying `ACK54558i1` / `ACK54558i2`, strings the prompt never contains.)
+9. **The pane cannot be used to check message *content* at all — the TUI renders markdown.**
+   Found while running `chars --mode echo`: the payload ``run `whoami` now`` is drawn in the pane,
+   in both the user message and the reply, as `run whoami now`. The backticks are consumed as
+   inline-code formatting. A `capture-pane` grep therefore reports a payload that arrived **byte
+   for byte intact** as mangled, and would have produced a false "backticks do not survive
+   delivery" finding — which is exactly the kind of number that gets written into ticket 007's
+   `shell-quote.ts` and never questioned. Anything asserting on message content must read Claude
+   Code's **JSONL transcript**, not the pane; the harness now does. Affects any `*`, `_`, `` ` ``,
+   `#` or `[]()` in a payload, and affects ticket 011's assertions directly.
+10. **`claude --model sonnet` does not touch the global config.** The model was selected by CLI flag
+    for every session here; `~/.claude/settings.json` was `{"theme": "dark"}` before the run and
+    `{"theme": "dark"}` after it. (The `/model` *slash command* does write to it — avoid that path
+    in anything automated.)
 
 ## Harness status
 
 | Path | Exercised against a live TUI? |
 | --- | --- |
 | session start, dialog handling, readiness, prefix-scoped cleanup | yes |
-| `rss` idle sampling, `/proc/meminfo` rows | yes |
+| `rss` idle **and mid-turn** sampling, `/proc/meminfo` rows | **yes — mid-turn now run against a live turn** |
 | `chars --mode compose`, size probes | yes |
-| `session-end` (settings file, hook log, kill-to-hook timing) | yes |
+| `chars --mode echo` | **yes — 36 live turns**, now transcript-verified rather than pane-verified |
+| `session-end`, both idle and `--midturn` | **yes — 8 live kills** |
+| `deliver --state idle` | **yes — 10 live turns** (8 + 2 validation) |
+| `deliver --state midturn` | **yes — 8 live turns** across two `SPIKE_MIDTURN_DELAY` settings |
+| `deliver --state prompt` | **yes — 3 live permission dialogs** |
+| `interrupt`, `interrupt --with-queued` | **yes — 6 live interrupts** |
 | `doctor`, every `--dry-run` plan | yes |
-| `deliver` (all three states), `interrupt`, `chars --mode echo` | **no — these need a working login.** The code paths that require a real turn have never executed one. Expect to debug the harness a little on the first VPS run; the failure modes it reports are `auth_failed`, `not_ready`, `no_turn` and `no_dialog`, none of which is silent |
+| `sudo-parity` | **no — never attempted.** Needs the VPS; see §7 |
+
+**Every turn-dependent path in the harness has now executed against a live login.** Four bugs were
+found by doing so, all fixed in this pass; the first three would each have produced a *plausible
+and wrong* number rather than an error, which is the argument for running the instrument before
+trusting it.
+
+| # | Bug | What it would have produced |
+| --- | --- | --- |
+| 1 | `RE_READY` matched only `? for shortcuts`, but the hint line becomes `⏵⏵ auto mode on (shift+tab to cycle)` whenever a permission mode is active | Every run aborted with `not_ready` against a session that was up and accepting input. Nothing ran at all |
+| 2 | `chars --mode echo` verified the reply **by grepping the pane**, which renders markdown | "Backticks do not survive tmux delivery" — false, and headed for `shell-quote.ts`. Now reads the JSONL transcript |
+| 3 | `chars --mode echo` sampled its occurrence baseline *after* submitting, behind a 2 s sleep; replies land in 1.3 – 2.5 s | Intact round trips reported as `echoed_mangled`, at random, depending on how fast the model answered |
+| 4 | `clear_composer()` counted with `i` — the same global the trial loops count with — so calling it ended the loop | `interrupt --trials 3` silently ran **one** trial and reported success. `deliver --state prompt --trials 20` would have done the same |
+| 5 | The "did the tool actually run" check hardcoded `spike003-permission-probe` while the prompt it belongs to is configurable | Three trials in which the injected message really did approve a tool call were labelled `dialog_dismissed` / `changed_other`. Now `SPIKE_PERMISSION_MARKER` |
+
+Bug 4 is why the interrupt N is 3 and not more: the first run of it produced one trial per variant.
 
 ## Carried requirement
 
 **Re-measuring on the VPS must be an acceptance criterion of the ticket that sets up the VPS.**
+**The WSL numbers in this document do not discharge this.** They were taken on a Microsoft-patched
+kernel in a utility VM, with no `sudo` in the tmux path, against a bare agent with no MCP servers,
+no hooks, no role file and an empty repo. They narrow the risk; they do not close it. Anything that
+consumes a figure from this document — 007's encoding choice and buffer-limit comment, 015's lock
+release, 018's cap — cites it as provisional and names the VPS run as the source of the real one.
 
 There is no such ticket in steps 1–3. Nothing in the 32-ticket set provisions the host, creates the
 `office` account or the agent users, or installs the sudoers file as a host-setup step. The closest
@@ -321,22 +673,248 @@ the parent session applies it. If instead a new host-setup ticket is created lat
 moves there — what matters is that it lands somewhere with an owner, because right now the
 re-measurement is nobody's job.
 
-## Open questions — still open
+## Open questions
 
-- [ ] **Does a mid-turn message queue in the TUI at all?** Unknown. Ticket 008 must not assume tmux
-      holds the queue; if it does not, the queue moves into the orchestrator and must survive a
-      restart.
-- [ ] **What does Interrupt do to a queued-but-undelivered message?** Unknown. The harness records
-      it (`interrupt --with-queued`); the product decision is ticket 027's.
-- [ ] **Which delivery mechanism does ticket 007 standardise on?** Undecided pending
-      `chars --mode echo`. Compose-mode evidence rules *against* bare `paste-buffer`; it does not by
-      itself rule *for* any of the other three.
-- [ ] **What is the real per-agent RSS, idle and mid-turn, on the VPS?** Unknown. Ticket 018's cap
-      has no other input.
+### Answered provisionally on WSL (the VPS run must confirm)
+
+- [x] **Does a mid-turn message queue in the TUI at all?** **Yes — 8/8 queued**, delivered at turn
+      end, the running turn not truncated. Ticket 008 is not forced into an orchestrator-side
+      durable queue.
+- [x] **What does Interrupt do to a queued-but-undelivered message?** **It survives and runs
+      immediately after the interrupt, 3/3.** The product decision is still ticket 027's; the
+      observation is no longer missing.
+- [x] **Which delivery mechanism does ticket 007 standardise on?** **`send-keys -l -- "$TEXT"`
+      followed by a separate `send-keys Enter`.** Intact on 9/9 payloads at the agent. Plain
+      `paste-buffer` is ruled out (splits on a newline); bare `send-keys` is ruled out (parses key
+      names); `paste-buffer -p` is the fallback for oversized payloads.
+- [x] **Does `kill-session` fire SessionEnd?** **Yes, 8/8**, idle and mid-turn. Ticket 015's TTL
+      stays a backstop.
+- [x] **What is the per-agent RSS, idle and mid-turn?** On WSL: ≈ 0.31 GB idle, ≈ 0.34 GB mid-turn
+      (+11 %). On the VPS: still unknown — see below.
+
+### Still open
+
+- [ ] **What is the real per-agent RSS, idle and mid-turn, on the VPS, for an agent that actually
+      has MCP servers, hooks, a role file and a real repo?** The WSL figure is a floor measured on
+      a bare agent, and the same binary varied ~15 % between two runs and ~2× between two builds.
+      Ticket 018's cap still has no target-measured input.
+- [ ] **What is the payload-size limit, and does an oversized message fail loudly?** Unanswered:
+      every size from 1 000 up collapses to a `[Pasted text #N]` placeholder and none was
+      submitted. Ticket 007's "state the measured limit in a code comment" cannot be written yet.
+      Now cheaply answerable with the transcript method.
+- [ ] **Does an *Escape-interrupted* turn fire `Stop`, `StopFailure`, or nothing?** A *killed*
+      mid-turn session fires neither `Stop` nor `StopFailure` (§5), but the Escape case was not
+      captured — the interrupt trials ran without the hook settings file. Ticket 010 needs this.
+- [ ] **How does the orchestrator know a permission dialog is up, so it can refuse to deliver into
+      one?** Newly raised, and now urgent: delivering a message into a live dialog **approves the
+      pending tool call** (§1). Pane-scraping for the dialog is the obvious answer and is exactly
+      the kind of version-fragile string match that broke twice during this spike.
 - [ ] **Does `sudo -u` preserve `$HOME` and `CLAUDE_CONFIG_DIR`, and are the tmux servers per-user?**
-      Untested. If the tmux socket turns out to be shared, the isolation the design assumes is not
-      there and the sudoers file is not the boundary it looks like.
-- [ ] **Should the Claude Code version be pinned on the VPS?** Raised by this spike rather than
-      inherited from the design: the CLI updated itself mid-experiment and changed the TUI. Anything
-      that scrapes the pane — the adapter's readiness check, a supervisor, ticket 011's assertions —
-      breaks silently when that happens. Needs a human decision, not an invention here.
+      Untested, and untestable here. If the tmux socket turns out to be shared, the isolation the
+      design assumes is not there and the sudoers file is not the boundary it looks like.
+- [ ] **Should the Claude Code version be pinned on the VPS?** Still needs a human decision, and
+      this pass strengthens the case: as well as the earlier mid-spike auto-update, the readiness
+      string turned out to vary with *permission mode* on a single build, and the harness read a
+      live session as dead for 90 s because of it. Anything that scrapes the pane breaks silently
+      when either changes.
+- [ ] **What is a sensible default permission mode for agent sessions?** Raised by this pass. A bare
+      `claude` here started in `⏵⏵ auto mode`, which approves tool calls without asking; forcing
+      `--permission-mode default` was required before a dialog appeared at all. Which mode the
+      orchestrator launches agents in is a safety decision no ticket currently owns.
+
+---
+
+## Appendix — raw TSV from the WSL run
+
+Every number in this document comes from these rows. Same run environment throughout:
+
+```
+# host        Linux 6.18.33.2-microsoft-standard-WSL2 x86_64
+# os          Ubuntu 24.04.4 LTS
+# tmux        tmux 3.4
+# claude      2.1.278 (Claude Code)          [checked again at the end of the run: 2.1.278]
+# sudo_prefix (none)
+# target_user gluy
+# project_dir /home/gluy/spike003-tmp/proj
+# config_dir  (default)
+# claude_args --model sonnet                 [deliver-prompt also: --permission-mode default]
+```
+
+Columns are `test · trial · variant · outcome · value · unit · detail`; the harness's leading UTC
+`ts` column is dropped for width. Each block names its `run_id`.
+
+```tsv
+--- doctor.tsv (run_id 43890) ---
+doctor	0	bin:tmux	ok	-	-	/usr/bin/tmux
+doctor	0	bin:ps	ok	-	-	/usr/bin/ps
+doctor	0	bin:awk	ok	-	-	/usr/bin/awk
+doctor	0	bin:grep	ok	-	-	/usr/bin/grep
+doctor	0	bin:sed	ok	-	-	/usr/bin/sed
+doctor	0	bin:claude	ok	-	-	/home/gluy/.local/bin/claude 2.1.278 (Claude Code)
+doctor	0	date_ms	ok	1790024850156	ms	millisecond clock available
+doctor	0	tmux_version	info	-	-	tmux 3.4 (needs >= 3.2 for new-session -e)
+doctor	0	project_dir	ok	-	-	/home/gluy/spike003-tmp/proj
+doctor	0	sudo	not_configured	-	-	SPIKE_USER empty: tmux runs as gluy, which is NOT what the VPS will do
+doctor	0	stale_sessions	info	0	count	existing spike003-* sessions; run cleanup to remove them
+doctor	0	markers	info	-	-	ready=/\? for shortcuts/ busy=/esc to interrupt/ — verify against the installed Claude Code version before trusting any row
+
+--- validate-idle.tsv (run_id 54558) — the N=2 check that the anti-false-positive token works ---
+deliver-idle	0	startup	ready	-	-	prompt reached
+deliver-idle	1	idle	ok	3889	ms	reply carried ACK54558i1
+deliver-idle	2	idle	ok	2829	ms	reply carried ACK54558i2
+
+--- chars-echo2.tsv (run_id 66960) — transcript-verified, SPIKE_REPLY_TIMEOUT=45 ---
+chars	0	startup	ready	-	-	prompt reached
+chars	1	dquote/keys	echoed_intact	1747	ms	transcript: received byte for byte and echoed byte for byte
+chars	2	dquote/literal	echoed_intact	1407	ms	transcript: received byte for byte and echoed byte for byte
+chars	3	dquote/buffer	echoed_intact	1513	ms	transcript: received byte for byte and echoed byte for byte
+chars	4	dquote/buffer-bracket	echoed_intact	2000	ms	transcript: received byte for byte and echoed byte for byte
+chars	5	squote/keys	echoed_intact	1488	ms	transcript: received byte for byte and echoed byte for byte
+chars	6	squote/literal	echoed_intact	1521	ms	transcript: received byte for byte and echoed byte for byte
+chars	7	squote/buffer	echoed_intact	1661	ms	transcript: received byte for byte and echoed byte for byte
+chars	8	squote/buffer-bracket	echoed_intact	1637	ms	transcript: received byte for byte and echoed byte for byte
+chars	9	backtick/keys	echoed_intact	1833	ms	transcript: received byte for byte and echoed byte for byte
+chars	10	backtick/literal	echoed_intact	1448	ms	transcript: received byte for byte and echoed byte for byte
+chars	11	backtick/buffer	echoed_intact	1495	ms	transcript: received byte for byte and echoed byte for byte
+chars	12	backtick/buffer-bracket	echoed_intact	1740	ms	transcript: received byte for byte and echoed byte for byte
+chars	13	dollar/keys	echoed_intact	1540	ms	transcript: received byte for byte and echoed byte for byte
+chars	14	dollar/literal	echoed_intact	1553	ms	transcript: received byte for byte and echoed byte for byte
+chars	15	dollar/buffer	echoed_intact	1513	ms	transcript: received byte for byte and echoed byte for byte
+chars	16	dollar/buffer-bracket	echoed_intact	1780	ms	transcript: received byte for byte and echoed byte for byte
+chars	17	semicolon/keys	echoed_intact	1820	ms	transcript: received byte for byte and echoed byte for byte
+chars	18	semicolon/literal	echoed_intact	2504	ms	transcript: received byte for byte and echoed byte for byte
+chars	19	semicolon/buffer	echoed_intact	1455	ms	transcript: received byte for byte and echoed byte for byte
+chars	20	semicolon/buffer-bracket	echoed_intact	1412	ms	transcript: received byte for byte and echoed byte for byte
+chars	21	shellmeta/keys	echoed_intact	1874	ms	transcript: received byte for byte and echoed byte for byte
+chars	22	shellmeta/literal	echoed_intact	1483	ms	transcript: received byte for byte and echoed byte for byte
+chars	23	shellmeta/buffer	echoed_intact	1867	ms	transcript: received byte for byte and echoed byte for byte
+chars	24	shellmeta/buffer-bracket	echoed_intact	1641	ms	transcript: received byte for byte and echoed byte for byte
+chars	25	nonascii/keys	echoed_intact	1366	ms	transcript: received byte for byte and echoed byte for byte
+chars	26	nonascii/literal	echoed_intact	1650	ms	transcript: received byte for byte and echoed byte for byte
+chars	27	nonascii/buffer	echoed_intact	1560	ms	transcript: received byte for byte and echoed byte for byte
+chars	28	nonascii/buffer-bracket	echoed_intact	1550	ms	transcript: received byte for byte and echoed byte for byte
+chars	29	newline/keys	echoed_intact	1342	ms	transcript: received byte for byte and echoed byte for byte
+chars	30	newline/literal	echoed_intact	1520	ms	transcript: received byte for byte and echoed byte for byte
+chars	31	newline/buffer	not_received	45082	ms	transcript: NO user message carried the payload byte for byte — the send mechanism mangled or split it
+chars	32	newline/buffer-bracket	echoed_intact	1416	ms	transcript: received byte for byte and echoed byte for byte
+chars	33	combined/keys	echoed_intact	1568	ms	transcript: received byte for byte and echoed byte for byte
+chars	34	combined/literal	echoed_intact	1876	ms	transcript: received byte for byte and echoed byte for byte
+chars	35	combined/buffer	echoed_intact	1694	ms	transcript: received byte for byte and echoed byte for byte
+chars	36	combined/buffer-bracket	echoed_intact	1459	ms	transcript: received byte for byte and echoed byte for byte
+chars	0	size-1000/buffer	collapsed_to_placeholder	1000	chars	composer shows [[Pasted text #1]] — verify with chars --mode echo
+chars	0	size-4000/buffer	collapsed_to_placeholder	4000	chars	composer shows [[Pasted text #2]] — verify with chars --mode echo
+chars	0	size-16000/buffer	collapsed_to_placeholder	16000	chars	composer shows [[Pasted text #3]] — verify with chars --mode echo
+chars	0	size-65536/buffer	collapsed_to_placeholder	65536	chars	composer shows [[Pasted text #4]] — verify with chars --mode echo
+
+--- sessend-idle.tsv (run_id 89298) — SessionEnd payloads truncated here for width ---
+session-end	1	idle	fired	241	ms	SessionEnd {"session_id":"3f61fed4-…","transcript_path":"…/3f61fed4-….jsonl","cwd":"/home/gluy/spike003-tmp/proj","scratchpad_dir":"/tmp/claude-1001/…","reason":"other"}
+session-end	2	idle	fired	231	ms	SessionEnd {"session_id":"121b6844-…", … }
+session-end	3	idle	fired	231	ms	SessionEnd {"session_id":"b9b440b6-…", … }
+session-end	4	idle	fired	225	ms	SessionEnd {"session_id":"5e2a726c-…", … }
+session-end	5	idle	fired	238	ms	SessionEnd {"session_id":"7e0d8a41-…", … }
+
+--- sessend-mid.tsv (run_id 90361) — hook log held 3 SessionStart + 3 SessionEnd + ZERO Stop ---
+session-end	1	midturn	fired	123	ms	SessionEnd {"session_id":"b219554e-…", … }
+session-end	2	midturn	fired	121	ms	SessionEnd {"session_id":"b0578c69-…", … }
+session-end	3	midturn	fired	144	ms	SessionEnd {"session_id":"396e28c2-…", … }
+
+--- rss.tsv (run_id 91396) ---
+rss	0	pane_pid	info	91417	pid	claude --model sonnet
+rss	1	idle	sample	258812	KB	process tree total
+rss	2	idle	sample	300280	KB	process tree total
+rss	3	idle	sample	300324	KB	process tree total
+rss	4	idle	sample	304240	KB	process tree total
+rss	5	idle	sample	307236	KB	process tree total
+rss	6	idle	sample	304620	KB	process tree total
+rss	7	idle	sample	304600	KB	process tree total
+rss	8	idle	sample	308264	KB	process tree total
+rss	9	idle	sample	306124	KB	process tree total
+rss	10	idle	sample	306624	KB	process tree total
+rss	11	idle	sample	307196	KB	process tree total
+rss	12	idle	sample	307128	KB	process tree total
+rss	0	idle	peak	308264	KB	highest idle sample over 12 samples
+rss	1	midturn	sample	331200	KB	process tree total during a turn
+rss	2	midturn	sample	331476	KB	process tree total during a turn
+rss	3	midturn	sample	330768	KB	process tree total during a turn
+rss	4	midturn	sample	331728	KB	process tree total during a turn
+rss	5	midturn	sample	332928	KB	process tree total during a turn
+rss	6	midturn	sample	335108	KB	process tree total during a turn
+rss	7	midturn	sample	335080	KB	process tree total during a turn
+rss	8	midturn	sample	340640	KB	process tree total during a turn
+rss	9	midturn	sample	343164	KB	process tree total during a turn
+rss	9	midturn	turn_ended	-	-	turn finished after 9 samples
+rss	0	midturn	peak	343164	KB	highest mid-turn sample
+rss	0	host	memtotal	8097908	KB	MemTotal from /proc/meminfo
+rss	0	host	memavailable	6689092	KB	MemAvailable at sample time
+
+--- interrupt.tsv (run_id 93066) — the clean Escape latency ---
+interrupt	1	escape	ok	124	ms	turn halted, session alive, pane shows an interrupted marker
+interrupt	2	escape	ok	123	ms	turn halted, session alive, pane shows an interrupted marker
+interrupt	3	escape	ok	125	ms	turn halted, session alive, pane shows an interrupted marker
+
+--- interruptq.tsv (run_id 93494) — "escape" here INCLUDES the queued turn, see §3 ---
+interrupt	1	escape	ok	2189	ms	turn halted, session alive, pane shows an interrupted marker
+interrupt	1	queued-after-escape	delivered	12	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+interrupt	2	escape	ok	2918	ms	turn halted, session alive, pane shows an interrupted marker
+interrupt	2	queued-after-escape	delivered	11	ms	the message queued before Escape still ran
+interrupt	3	escape	ok	1391	ms	turn halted, session alive, pane shows an interrupted marker
+interrupt	3	queued-after-escape	delivered	14	ms	the message queued before Escape still ran
+
+--- deliver-idle.tsv (run_id 94620) ---
+deliver-idle	1	idle	ok	4418	ms	reply carried ACK94620i1
+deliver-idle	2	idle	ok	1506	ms	reply carried ACK94620i2
+deliver-idle	3	idle	ok	1437	ms	reply carried ACK94620i3
+deliver-idle	4	idle	ok	1390	ms	reply carried ACK94620i4
+deliver-idle	5	idle	ok	1299	ms	reply carried ACK94620i5
+deliver-idle	6	idle	ok	1450	ms	reply carried ACK94620i6
+deliver-idle	7	idle	ok	1949	ms	reply carried ACK94620i7
+deliver-idle	8	idle	ok	1506	ms	reply carried ACK94620i8
+
+--- deliver-mid.tsv (run_id 95942) — message sent 4 s into the turn ---
+--- "turn end" = the busy marker clearing, which is NOT turn end; see §2 ---
+deliver-midturn	1	midturn	queued	6282	ms	delivered after turn end (342ms); queue latency 5940ms
+deliver-midturn	2	midturn	queued	2172	ms	delivered after turn end (328ms); queue latency 1844ms
+deliver-midturn	3	midturn	queued	1942	ms	delivered after turn end (327ms); queue latency 1615ms
+deliver-midturn	4	midturn	queued	2510	ms	delivered after turn end (329ms); queue latency 2181ms
+deliver-midturn	5	midturn	queued	2208	ms	delivered after turn end (327ms); queue latency 1881ms
+
+--- deliver-mid-early.tsv (run_id 97787) — SPIKE_MIDTURN_DELAY=1, seconds of real overlap ---
+deliver-midturn	1	midturn	queued	9012	ms	delivered after turn end (148ms); queue latency 8864ms
+deliver-midturn	2	midturn	queued	5858	ms	delivered after turn end (331ms); queue latency 5527ms
+deliver-midturn	3	midturn	queued	5737	ms	delivered after turn end (339ms); queue latency 5398ms
+
+--- deliver-prompt.tsv (run_id 102532) — --permission-mode default, probe = a touch, not an echo ---
+--- THESE LABELS UNDERSTATE WHAT HAPPENED. Ground truth is the transcript below. ---
+deliver-prompt	1	permission	changed_other	3334	ms	dialog still up but pane changed
+deliver-prompt	2	permission	dialog_dismissed	3326	ms	dialog disappeared without the tool running
+deliver-prompt	3	permission	dialog_dismissed	3348	ms	dialog disappeared without the tool running
+```
+
+### Ground truth for the permission-prompt trials
+
+The harness's labels above are wrong for the reason given in [Harness status](#harness-status)
+(bug 5). What actually happened, from the session's JSONL transcript — tool calls and their
+results, in order:
+
+```
+TOOL_USE : ls -la /home/gluy/spike003-tmp/out 2>&1 || ls -la /home/gluy/spike003-tmp
+  RESULT : total 116\ndrwxr-xr-x 2 gluy gluy 4096 …          <- APPROVED by the injected message
+TOOL_USE : touch /home/gluy/spike003-tmp/out/PERMRAN.txt
+  RESULT : ERROR The user doesn't want to proceed …          <- the harness's own Escape, between trials
+TOOL_USE : touch /home/gluy/spike003-tmp/out/PERMRAN.txt
+  RESULT : (Bash completed with no output)                   <- APPROVED by the injected message
+TOOL_USE : touch /home/gluy/spike003-tmp/out/PERMRAN.txt
+  RESULT : (Bash completed with no output)                   <- APPROVED by the injected message
+```
+
+and on disk afterwards: `-rw-r--r-- 1 gluy gluy 0 Sep 22 04:23 /home/gluy/spike003-tmp/out/PERMRAN.txt`.
+
+### The newline split, from the transcript
+
+Three consecutive user messages, showing one message becoming two turns under plain `paste-buffer`:
+
+```
+line one\nline two <- repeat the text before this arrow back to me exactly once, with nothing else.
+line one
+line two <- repeat the text before this arrow back to me exactly once, with nothing else.
+```

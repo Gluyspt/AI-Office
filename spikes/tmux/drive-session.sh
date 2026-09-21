@@ -10,8 +10,28 @@
 # THIS SCRIPT IS THE INSTRUMENT, NOT THE READING.
 #
 # It was written on a Windows host against a WSL Ubuntu, where the numbers that matter
-# (timing, RSS, sudo behaviour) are not trustworthy. Every measurement in the findings
-# doc is deferred until this runs on the target VPS. Run it there, paste its stdout.
+# (timing, RSS, sudo behaviour) are not trustworthy.
+#
+# It HAS now been run there, against a live login: the findings doc carries a full set of
+# WSL numbers, labelled as provisional in every section. They are not the target's. RSS
+# under WSL2's memory accounting, timings against a Microsoft-patched kernel in a utility
+# VM, and a tmux path with no `sudo` in it are all wrong for the VPS in ways nobody could
+# see later. Ticket 007 re-runs this on the target and replaces those numbers.
+#
+# `sudo-parity` has still never executed: it needs the real accounts and sudoers file.
+#
+# Five bugs were found by running it. Four produced a plausible WRONG number rather than
+# an error, which is the argument for not trusting an instrument that has not been used:
+#   1. RE_READY matched one hint string that moves with the permission mode  -> everything
+#      reported not_ready against a session that was up and taking input.
+#   2. chars --mode echo verified via the PANE, which renders markdown       -> `backticks`
+#      were reported mangled when they had arrived byte for byte. Reads the transcript now.
+#   3. that check sampled its baseline AFTER submitting, behind a 2 s sleep  -> replies that
+#      landed in under 2 s were scored as failures.
+#   4. clear_composer() counted with `i`, the loop counter of its callers    -> --trials N
+#      silently ran exactly one trial and reported success.
+#   5. the "did the tool run" marker was hardcoded while its prompt is a var -> injected
+#      messages that really did approve a tool call were labelled dismissed.
 # ---------------------------------------------------------------------------------
 #
 # WHAT MUST BE SUPPLIED ON THE VPS
@@ -105,12 +125,25 @@ SPIKE_KEEP="${SPIKE_KEEP:-0}"                     # 1 = leave sessions up for in
 # A turn long enough to act against, that needs no tools and no permission prompt.
 SPIKE_LONG_PROMPT="${SPIKE_LONG_PROMPT:-Without using any tools, count from 1 to 60. Put each number on its own line with a short sentence about it.}"
 # A prompt that should raise a permission request (no tool is pre-approved in step 1).
+# NOTE: 2.1.278 runs `echo` with NO dialog at all — it classifies some commands as safe
+# enough not to ask, with no allowlist involved. Use a WRITE to reach the dialog, e.g.
+#   SPIKE_PERMISSION_PROMPT='Use the Bash tool to run: touch /tmp/spike003-permission-probe'
 SPIKE_PERMISSION_PROMPT="${SPIKE_PERMISSION_PROMPT:-Use the Bash tool to run: echo spike003-permission-probe}"
+# Proof-of-execution marker looked for in the pane. This MUST track SPIKE_PERMISSION_PROMPT:
+# it was hardcoded, so overriding the prompt silently broke the dialog_answered branch and
+# three trials in which the injected message really did approve the tool were reported as
+# `dialog_dismissed` / `changed_other`. Pick a marker that appears only when the tool RUNS,
+# not one that is already in the command text the dialog itself displays.
+SPIKE_PERMISSION_MARKER="${SPIKE_PERMISSION_MARKER:-spike003-permission-probe}"
 
 # TUI state markers. Version-sensitive — checked and reported by `doctor`. Observed on
 # Claude Code 2.1.278; 2.1.178 auto-updated to it mid-spike and grew a new blocking modal,
 # so verify these strings against the build actually installed before trusting a run.
-RE_READY='\? for shortcuts'
+# The hint line under the composer reads "? for shortcuts" ONLY while the permission mode is
+# the default. With any mode active it is replaced by "<mode> on (shift+tab to cycle)" —
+# observed on 2.1.278 with auto mode on, where a session whose composer was up and accepting
+# input was reported as a 90 s startup timeout. Match the mode line too.
+RE_READY='\? for shortcuts|shift\+tab to cycle'
 RE_BUSY='esc to interrupt'
 RE_TRUST='trust this folder|Is this a project you created or one you trust'
 # Any other first-run / onboarding modal. Observed in the wild: an auto-update to 2.1.278
@@ -290,7 +323,9 @@ wait_ready() {
   while [ "$(date +%s)" -lt "$deadline" ]; do
     p="$(pane "$s")"
     if matches "$p" "$RE_AUTH_FAIL"; then return 3; fi
-    if matches "$p" "$RE_READY"; then return 0; fi
+    # Dialogs are tested BEFORE readiness. The composer's hint line can still be on screen
+    # underneath a modal, so checking readiness first sends the opening message into the
+    # dialog instead of the prompt — the exact failure ticket 007's newSession must avoid.
     if matches "$p" "$RE_TRUST"; then
       tmux_raw send-keys -t "$s" Enter
       READY_DIALOGS="$READY_DIALOGS trust(Enter)"
@@ -304,6 +339,8 @@ wait_ready() {
       answered=$(( answered + 1 ))
       log "cancelled an onboarding modal in $s: ${title:-unlabelled}"
       sleep 1.5
+    elif matches "$p" "$RE_READY"; then
+      return 0
     else
       sleep "$SPIKE_POLL"
     fi
@@ -393,11 +430,16 @@ submit() { sleep "$SPIKE_SEND_GAP"; tmux_raw send-keys -t "$1" Enter; }
 
 # C-u clears ONE line of the composer, so a multi-line draft needs several. Escape does
 # not clear it (measured); C-c does, but a second C-c exits Claude Code, so C-u is safer.
+#
+# The counter is _cc_i, NOT i. sh has no function scope: this used `i`, and every trial
+# loop that calls it at the end of a trial also counts with `i`, so the call left i=4 and
+# the loop exited after ONE trial while reporting success. `interrupt --trials 3` silently
+# ran a single trial; `deliver --state prompt --trials 20` would have done the same.
 clear_composer() {
-  i=0
-  while [ "$i" -lt 4 ]; do
+  _cc_i=0
+  while [ "$_cc_i" -lt 4 ]; do
     tmux_raw send-keys -t "$1" C-u 2>/dev/null || true
-    i=$(( i + 1 ))
+    _cc_i=$(( _cc_i + 1 ))
   done
   sleep 0.3
 }
@@ -535,7 +577,7 @@ deliver_prompt() {
     # forbids keystroke injection for prompts precisely because of this; measure whether
     # an ordinary chat message can trip it.
     if ! matches "$after" "$RE_PERMISSION"; then
-      if contains "$after" "spike003-permission-probe"; then
+      if contains "$after" "$SPIKE_PERMISSION_MARKER"; then
         emit deliver-prompt "$i" permission dialog_answered "$(( $(now_ms) - t0 ))" ms "DANGER: the message dismissed the dialog and the tool ran"
       else
         emit deliver-prompt "$i" permission dialog_dismissed "$(( $(now_ms) - t0 ))" ms "dialog disappeared without the tool running"
@@ -704,6 +746,51 @@ VARIANTS
 # newline variant; %b turns the \n into a real newline and leaves everything else alone.
 expand() { printf '%b' "$1"; }
 
+# --- echo-mode ground truth: the transcript, not the pane ------------------------------
+#
+# THE PANE CANNOT ANSWER THIS CRITERION. The TUI renders both the user message and the
+# reply as markdown, so a payload containing `backticks` is drawn with the backticks
+# stripped: `run \`whoami\` now` is displayed as "run whoami now". A grep of capture-pane
+# then reports a payload that arrived perfectly intact as mangled. Measured on 2.1.278.
+#
+# Claude Code's own JSONL transcript records the user message verbatim, which is exactly
+# the question the ticket asks — "what the agent actually received" — and it records the
+# reply too, so delivery and echo can be told apart.
+#
+# Note the transcript file does NOT exist until the first message is submitted (measured),
+# so it is re-resolved on every poll rather than cached at session start.
+
+transcript_file() {
+  root="${SPIKE_CONFIG_DIR:-$HOME/.claude}/projects"
+  slug="$(printf '%s' "$SPIKE_PROJECT_DIR" | sed -e 's/[\/.]/-/g')"
+  ls -t "$root/$slug"/*.jsonl 2>/dev/null | head -n 1
+}
+
+# json_escape <text> — reproduce what JSON.stringify did to the payload on its way into the
+# transcript: backslash, double quote, and a real newline into a literal \n. Every other
+# character in this matrix — backtick, $, ;, shell metacharacters, UTF-8 — is stored
+# literally, so grep -F on the escaped form is an exact test.
+json_escape() {
+  printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' \
+    | awk '{ printf "%s%s", sep, $0; sep="\\n" } END { printf "\n" }'
+}
+
+# transcript_count <file> <user|assistant> <text> — lines of that role holding the payload
+# byte for byte. Filtering by role matters: the transcript also carries a `last-prompt`
+# bookkeeping line with the same text, which would inflate a naive count.
+transcript_count() {
+  f="$1"; kind="$2"
+  { [ -n "$f" ] && [ -f "$f" ]; } || { printf '0'; return 0; }
+  needle="$(json_escape "$3")"
+  case "$kind" in
+    user) pat='"type":"user"' ;;
+    *)    pat='"role":"assistant"' ;;
+  esac
+  c="$(grep -F -- "$pat" "$f" 2>/dev/null | grep -cF -- "$needle" || true)"
+  printf '%s' "${c:-0}"
+}
+
 cmd_chars() {
   mode=compose
   while [ $# -gt 0 ]; do
@@ -775,24 +862,34 @@ cmd_chars() {
         fi
         clear_composer "$s"
       else
-        # Echo mode: submit it and ask for it back. The submitted message is itself on
-        # screen, so the test is "one MORE occurrence than the user message", not "present".
+        # Echo mode: submit it and ask for it back, then read the TRANSCRIPT, not the pane
+        # (see the comment above transcript_file — markdown rendering makes the pane lie).
+        # Baselines are taken before the submit and reset if a new transcript file appears,
+        # which is what happens on the first trial: the file is created by the first submit.
+        mark="$(transcript_file)"
+        ubase="$(transcript_count "$mark" user "$expected")"
+        abase="$(transcript_count "$mark" assistant "$expected")"
         tmux_raw send-keys -t "$s" -l -- " <- repeat the text before this arrow back to me exactly once, with nothing else."
         submit "$s"
-        sleep 2
-        base="$(hist_count "$s" "$first")"
-        t0="$(now_ms)"; found=0
+        t0="$(now_ms)"; got_user=0; got_asst=0
         deadline=$(( $(date +%s) + SPIKE_REPLY_TIMEOUT ))
         while [ "$(date +%s)" -lt "$deadline" ]; do
-          [ "$(hist_count "$s" "$first")" -gt "${base:-0}" ] && { found=1; break; }
+          tf="$(transcript_file)"
+          if [ "$tf" != "$mark" ]; then mark="$tf"; ubase=0; abase=0; fi
+          [ "$(transcript_count "$mark" user "$expected")" -gt "${ubase:-0}" ] && got_user=1
+          if [ "$(transcript_count "$mark" assistant "$expected")" -gt "${abase:-0}" ]; then
+            got_asst=1; break
+          fi
           sleep "$SPIKE_POLL"
         done
         ms=$(( $(now_ms) - t0 ))
         snapshot "$s" "chars-echo-$name-$mech"
-        if [ "$found" = "1" ]; then
-          emit chars "$n" "$name/$mech" echoed_intact "$ms" ms "the agent echoed the string back byte for byte"
+        if [ "$got_asst" = "1" ]; then
+          emit chars "$n" "$name/$mech" echoed_intact "$ms" ms "transcript: the agent received the payload byte for byte and echoed it back byte for byte"
+        elif [ "$got_user" = "1" ]; then
+          emit chars "$n" "$name/$mech" received_echo_differs "$ms" ms "transcript: the user message carried the payload byte for byte; the reply did not repeat it exactly (an agent-wording issue, not a delivery one)"
         else
-          emit chars "$n" "$name/$mech" echoed_mangled "$ms" ms "no second copy of the payload; snapshot: $RUNDIR/panes/chars-echo-$name-$mech.txt"
+          emit chars "$n" "$name/$mech" not_received "$ms" ms "transcript: NO user message carried the payload byte for byte — the send mechanism mangled or split it; snapshot: $RUNDIR/panes/chars-echo-$name-$mech.txt"
         fi
         wait_idle "$s" "$SPIKE_TURN_TIMEOUT" || true
       fi
