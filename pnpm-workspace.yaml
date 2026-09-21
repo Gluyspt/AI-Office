@@ -1,0 +1,9 @@
+packages:
+  - "packages/*"
+
+# esbuild is a transitive dependency of vitest/vite; its postinstall only
+# fetches its platform-specific binary. Approved so `pnpm install` doesn't
+# need an interactive `pnpm approve-builds` prompt (pnpm's build-script
+# allowlist).
+allowBuilds:
+  esbuild: true
