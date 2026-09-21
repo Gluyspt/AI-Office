@@ -120,3 +120,62 @@ export function loadTlsConfig(env: NodeJS.ProcessEnv = process.env): TlsConfig {
   finish(reader);
   return { certPath, keyPath };
 }
+
+// --- Ticket 005: event server -----------------------------------------------
+//
+// Appended under the manifest exception recorded in docs/tasks/README.md
+// ("A later ticket may append a loadXConfig() to config.ts") — 004 owns this
+// file permanently, but had no way to validate a variable ticket 005 is the
+// first to read. This section does not touch ConfigError or either
+// loadXConfig() above.
+//
+// EVENT_SERVER_PORT has no default (like DATABASE_URL and the TLS paths
+// above) — a port genuinely has no safe value to fabricate, and
+// .env.example documents it without the "Optional — defaults to..." wording
+// used for values that do have one.
+//
+// HOOK_INGEST_TOKENS exists because of this ticket's binding "Decided"
+// finding (spike 002): hook POSTs carry no authentication or signature, so
+// anything that can reach the port can forge any event for any session_id.
+// TLS authenticates the *server* to the client, the wrong direction; the
+// mitigation is binding loopback only (enforced in server.ts, not
+// configurable — there is no "trusted non-loopback" mode to opt into) plus a
+// per-user token carried in the hook URL's query string, which the spike
+// verified survives the hook call intact. There is no user table yet
+// (that's later steps' access-control work), so this ticket treats it as a
+// flat set of opaque accepted tokens rather than a token-to-user map;
+// ticket 009, which provisions each role's hook URLs, is what gives each
+// token a person.
+export interface ServerConfig {
+  readonly port: number;
+  readonly hookIngestTokens: readonly string[];
+}
+
+function requiredInt(reader: Reader, name: string, min: number): number {
+  const raw = requiredString(reader, name);
+  if (raw === "") {
+    // requiredString already recorded the "missing" problem.
+    return 0;
+  }
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value) || String(value) !== raw.trim() || value < min) {
+    reader.problems.push(`${name} must be an integer >= ${min}, got ${JSON.stringify(raw)}`);
+    return 0;
+  }
+  return value;
+}
+
+export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
+  const reader: Reader = { env, problems: [] };
+  const port = requiredInt(reader, "EVENT_SERVER_PORT", 1);
+  const tokensRaw = requiredString(reader, "HOOK_INGEST_TOKENS");
+  const hookIngestTokens = tokensRaw
+    .split(",")
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+  if (tokensRaw !== "" && hookIngestTokens.length === 0) {
+    reader.problems.push("HOOK_INGEST_TOKENS must contain at least one non-empty token");
+  }
+  finish(reader);
+  return { port, hookIngestTokens };
+}
