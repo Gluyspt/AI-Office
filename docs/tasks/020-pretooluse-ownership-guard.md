@@ -61,6 +61,18 @@ None.
 
 **Fail open, but never silently.** An unreachable orchestrator must not freeze every agent on the box, so the edit proceeds — and the guard buffers it to disk, flushes on recovery, and the orchestrator then works out retroactively whether anything was actually violated. During an outage the protection degrades to `claim_task` alone; afterwards, the damage is enumerated rather than guessed at.
 
+- **The guard endpoint is `https`**, per the system-wide decision (see the ticket index). Transport
+  only — `"type": "http"` stays the hook-config keyword.
+- **The 2 s fail-open needs an explicit `"timeout": 2`** on the hook entry. Spike 002 measured the
+  default at 30 s, and it stalls the turn.
+- **An `http` hook blocks with a 2xx whose body carries `decision`/`continue` — not an exit code, and a
+  non-2xx does not block.** The blocking field differs per event, and
+  `hookSpecificOutput.permissionDecision` did *not* block the event it was tested on. The `PreToolUse`
+  mapping specifically is **unverified**, so this ticket must confirm it before building on it.
+- **`!` bash mode bypasses `PreToolUse` entirely.** The guard constrains the agent, not the session:
+  anyone with the tmux pane can run shell commands it never sees. Document the limit; do not claim
+  coverage the mechanism does not have.
+
 ## Open questions
 
 - [ ] The retroactive check finds conflicts after the fact, when both agents may have already edited. It flags for review; it cannot undo. Whether a flagged task should also be paused automatically is unaddressed by the design — not implemented, because auto-pausing on a stale signal is its own failure mode.

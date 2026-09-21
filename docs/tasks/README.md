@@ -257,6 +257,7 @@ Twelve questions the design left open have been settled and written into the tic
 | **Done shows a 7-day window** under day headers, with "+N earlier" applying a state filter on the existing filter bar. `state` joins the filter set. | 013, 023, 024 |
 | **First test target is a throwaway repo**, then a real project once step 3's acceptance pass clears. | 011, 030 |
 | **An interim "Advance (no gate yet)" control** stands in for `delivered` until step 6, because nothing in steps 1–3 can reach it. Labelled honestly, records who bypassed the gate, and is built as one deletable unit. | 032 |
+| **Every HTTP endpoint in the system is `https`, including on loopback.** No plaintext listener anywhere — hook ingest, the guard endpoint, the web app and its WebSocket (`wss://`). Note this is a *transport* decision: `"type": "http"` remains the hook-config keyword, since Claude Code's hook types are `http` and `command` and there is no `https` type — only the URL scheme changes. TLS does **not** on its own fix the forgeable-ingest finding from 002, so 005 still carries a per-user token in the hook URL query string. | 005, 006, 009, 020, 022 |
 
 ## Still open before starting
 
@@ -270,6 +271,7 @@ Three are research deliverables — the spikes exist to answer them. The rest ne
 | Numbers with no measurement behind them yet: per-project agent cap, global memory floor, lock TTL, pause deadline. All ship as required config with no default, so each is chosen rather than inherited. | 015, 018, 028 | 015, 018, 028 |
 | Who owns which department by default — the design's own open question. Low impact until a second account arrives at step 9. | 019 | 019 |
 | Who pays for the tokens the verification tickets spend. | 011, 030 | 011 |
+| **Does Claude Code's hook client accept a self-signed certificate?** Untested — the spike's WSL login expired before it could be tried. If it does not, the https decision needs a trusted local CA (or `NODE_EXTRA_CA_CERTS` exported into every agent session) before 009 can provision hooks at all. `spikes/hooks/echo-server.mjs` now serves TLS and logs handshake rejections distinctly, so the re-run answers this. | 005, 009, 020 | 002 |
 
 ## Carried to later steps
 

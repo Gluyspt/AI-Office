@@ -42,6 +42,11 @@ None.
 - [ ] A slow consumer does not block ingest — a client that stops reading is disconnected once its outbound buffer passes a configured limit, and ingest latency stays within the p95 target from ticket 005 while that happens.
 - [ ] Three clients subscribed to the same project all receive the same event exactly once each.
 
+## Decided
+
+- **The WebSocket is `wss://`, not `ws://`**, per the system-wide https decision (see the ticket index,
+  "Decisions made"). It shares the event server's TLS listener rather than standing up a second one.
+
 ## Open questions
 
 - [ ] The design says "web sockets" but the data-flow diagram also mentions SSE for the knowledge graph servers. This ticket uses WebSocket for the UI channel; no reconciliation is needed until step 5.

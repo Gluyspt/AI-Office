@@ -50,6 +50,24 @@ None.
 - [ ] Provisioning refuses to write outside the target user's config directory — a test passes a traversal path and asserts rejection.
 - [ ] The provisioner never writes a secret into the settings file; secrets are injected as environment variables at launch.
 
+## Decided
+
+- **Every hook URL this ticket emits is `https`**, per the system-wide decision (see the ticket index).
+  `"type": "http"` remains the config keyword; only the scheme changes.
+- **Provisioning must also make the agent trust the certificate.** If the event server uses a
+  self-signed or local-CA cert, the launch environment needs `NODE_EXTRA_CA_CERTS` pointed at it, or
+  every hook silently fails the TLS handshake and no event arrives — indistinguishable, from the
+  orchestrator's side, from a hook that never fired. Whether the hook client accepts a self-signed cert
+  at all is still untested; see `docs/spikes/001-hook-payloads.md`.
+- **`SessionStart` must be a `command` hook, not an `http` one.** Spike 002 reproduced three times that
+  `SessionStart` is never delivered to an `http` hook, while a `command` hook in the same block receives
+  it every time. The design's hook block is wrong on this point, at exactly the event where a session
+  first identifies itself.
+- **Every hook entry carries an explicit `"timeout"`.** The default is 30 s and it stalls the turn;
+  `"timeout": 2` is honoured on both hook types.
+- **Hook config is read once at launch — there is no hot reload.** Re-provisioning hooks means
+  restarting the agent, which this ticket must state rather than discover.
+
 ## Open questions
 
 - [ ] The design does not say where per-user agent definitions live, or whether all three users get identical role files from one source of truth. This ticket assumes a single repo-owned set copied at provision time. Confirm before anyone hand-edits a role on the VPS.

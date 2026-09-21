@@ -1,18 +1,18 @@
 {
-  "$comment": "Spike 002 only. Load with: claude --settings /path/to/settings.spike.json. Registers every hook event the design names (docs/ai-agent-office-design.md, 'Messaging out') against the throwaway echo server on 127.0.0.1:8787. UserPromptSubmit is not in the design - it is spike instrumentation, used to timestamp t0 of the chat round trip. MessageDisplay is deliberately absent: the design defers it past v1.",
+  "$comment": "Spike 002 only. Load with: claude --settings /path/to/settings.spike.json. Registers every hook event the design names (docs/ai-agent-office-design.md, 'Messaging out') against the throwaway echo server on 127.0.0.1:8787 over TLS (decided: https everywhere, including loopback - see docs/tasks/README.md). Launch claude with NODE_EXTRA_CA_CERTS pointed at the echo server cert, or the hook client will reject the self-signed cert and no event will arrive. UserPromptSubmit is not in the design - it is spike instrumentation, used to timestamp t0 of the chat round trip. MessageDisplay is deliberately absent: the design defers it past v1.",
   "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/start" }] }],
-    "SessionEnd": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/end" }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/prompt" }] }],
-    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/tool" }] }],
-    "PostToolUse": [{ "matcher": "*", "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/tool-post" }] }],
-    "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/permission" }] }],
-    "Stop": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/reply" }] }],
-    "StopFailure": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/failure" }] }],
-    "PreCompact": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/compact" }] }],
-    "PreModelSwitch": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/model-pre" }] }],
-    "PostModelSwitch": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/model" }] }],
-    "TaskCreated": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/task-created" }] }],
-    "TaskCompleted": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:8787/events/task-completed" }] }]
+    "SessionStart": [{ "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/start" }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/end" }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/prompt" }] }],
+    "PreToolUse": [{ "matcher": "*", "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/tool" }] }],
+    "PostToolUse": [{ "matcher": "*", "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/tool-post" }] }],
+    "PermissionRequest": [{ "matcher": "*", "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/permission" }] }],
+    "Stop": [{ "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/reply" }] }],
+    "StopFailure": [{ "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/failure" }] }],
+    "PreCompact": [{ "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/compact" }] }],
+    "PreModelSwitch": [{ "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/model-pre" }] }],
+    "PostModelSwitch": [{ "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/model" }] }],
+    "TaskCreated": [{ "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/task-created" }] }],
+    "TaskCompleted": [{ "hooks": [{ "type": "http", "url": "https://127.0.0.1:8787/events/task-completed" }] }]
   }
 }

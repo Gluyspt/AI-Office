@@ -48,6 +48,21 @@ None.
 - [ ] `GET /events?project_id=&since=&limit=` returns events newest-first with a working `since` cursor.
 - [ ] Killing and restarting the process loses no stored event.
 
+## Decided
+
+- **Every endpoint this ticket creates is `https`, including on loopback.** No plaintext listener
+  anywhere in the system. This is a transport decision only: `"type": "http"` stays the hook-config
+  keyword — Claude Code's hook types are `http` and `command`, there is no `https` type, and only the
+  URL scheme changes.
+- **TLS is not the answer to forgeable ingest.** Spike 002 found hook POSTs carry no authentication or
+  signature, so anything that can reach the port can forge any event for any `session_id`. TLS
+  authenticates the server to the client, which is the wrong direction. The mitigation is a per-user
+  token on the hook URL — the spike verified query strings survive the hook call intact — plus binding
+  loopback only.
+- **Open, and it gates this ticket:** whether Claude Code's hook client accepts a self-signed cert is
+  untested. If it does not, hooks need a trusted local CA or `NODE_EXTRA_CA_CERTS` exported into every
+  agent session. See `docs/spikes/001-hook-payloads.md`.
+
 ## Open questions
 
 - [ ] The design lists eight hook events but never says which are required for v1 versus captured for later use. This ticket ingests all eight, on the argument that storage is cheap and re-instrumenting agents later is not.

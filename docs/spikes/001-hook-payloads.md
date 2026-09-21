@@ -11,6 +11,22 @@ the cost is known, not its VPS value.
 > every observation below ran on. Re-check these findings after a Claude Code upgrade — several of
 > them are undocumented behaviours, not contracts.
 
+> **Update after this spike ran — transport changed to https.** Everything recorded below was observed
+> over plaintext `http://127.0.0.1:8787`, because that is what the design specified at the time. The
+> system has since decided on **https everywhere, loopback included** (see the ticket index,
+> "Decisions made"), and `spikes/hooks/echo-server.mjs` and `settings.spike.json` have been moved to
+> TLS. The observations here are left exactly as they were made rather than rewritten — they are the
+> experimental record, and the payload shapes, blocking semantics, correlation field and timings are
+> transport-independent.
+>
+> **One finding below is now a live risk rather than a footnote:** it is untested whether Claude Code's
+> hook client accepts a self-signed certificate. If it refuses, hooks fail the TLS handshake and *no
+> event arrives* — which looks identical, from the orchestrator's side, to a hook that never fired.
+> The echo server now logs handshake rejections distinctly (`tlsClientError` → `unknown ca`) so the two
+> are told apart, and this is the first thing the post-`/login` re-run should check. If the cert is
+> refused, the fix is a trusted local CA or `NODE_EXTRA_CA_CERTS` exported into every agent session —
+> not a fallback to plaintext.
+
 ## Verdict, in one table
 
 | Question | Answer | Confidence |

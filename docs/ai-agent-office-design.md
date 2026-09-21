@@ -145,17 +145,30 @@ The `Stop` hook fires when an agent finishes a turn and carries `last_assistant_
 ```json
 {
   "hooks": {
-    "Stop":             [{ "hooks": [{ "type": "http", "url": "http://localhost:8080/events/reply" }] }],
-    "StopFailure":      [{ "hooks": [{ "type": "http", "url": "http://localhost:8080/events/failure" }] }],
-    "PreToolUse":       [{ "hooks": [{ "type": "http", "url": "http://localhost:8080/events/tool" }] }],
-    "PermissionRequest":[{ "hooks": [{ "type": "http", "url": "http://localhost:8080/events/permission" }] }],
-    "SessionStart":     [{ "hooks": [{ "type": "http", "url": "http://localhost:8080/events/start" }] }],
-    "SessionEnd":       [{ "hooks": [{ "type": "http", "url": "http://localhost:8080/events/end" }] }],
-    "PreCompact":       [{ "hooks": [{ "type": "http", "url": "http://localhost:8080/events/compact" }] }],
-    "PostModelSwitch":  [{ "hooks": [{ "type": "http", "url": "http://localhost:8080/events/model" }] }]
+    "Stop":             [{ "hooks": [{ "type": "http", "url": "https://localhost:8080/events/reply" }] }],
+    "StopFailure":      [{ "hooks": [{ "type": "http", "url": "https://localhost:8080/events/failure" }] }],
+    "PreToolUse":       [{ "hooks": [{ "type": "http", "url": "https://localhost:8080/events/tool" }] }],
+    "PermissionRequest":[{ "hooks": [{ "type": "http", "url": "https://localhost:8080/events/permission" }] }],
+    "SessionStart":     [{ "hooks": [{ "type": "http", "url": "https://localhost:8080/events/start" }] }],
+    "SessionEnd":       [{ "hooks": [{ "type": "http", "url": "https://localhost:8080/events/end" }] }],
+    "PreCompact":       [{ "hooks": [{ "type": "http", "url": "https://localhost:8080/events/compact" }] }],
+    "PostModelSwitch":  [{ "hooks": [{ "type": "http", "url": "https://localhost:8080/events/model" }] }]
   }
 }
 ```
+
+**Revised since this was written.** Two corrections, both from `docs/spikes/001-hook-payloads.md`:
+
+- **Scheme.** Every endpoint in the system is `https`, loopback included — decided deliberately, see
+  the ticket index. `"type": "http"` above is the hook-config *keyword*, not a protocol: Claude Code's
+  hook types are `http` and `command`, there is no `https` type, and only the URL scheme changes.
+  TLS does not by itself fix the fact that hook POSTs carry no authentication or signature — anything
+  that can reach the port can forge any event for any `session_id` — so ingest also binds loopback and
+  carries a per-user token in the URL query string.
+- **`SessionStart` cannot be an `http` hook.** Reproduced three times: it is never delivered to one,
+  while a `command` hook registered in the same block receives it every time. It must be a `command`
+  entry that POSTs to the event server. Every entry also needs an explicit `"timeout"` — the default is
+  30 s and it stalls the turn.
 
 Do not read the transcript file for the current turn — the docs state it is written asynchronously and may lag. Use `last_assistant_message`.
 
@@ -221,7 +234,7 @@ model_list:
 ```
 
 ```bash
-ANTHROPIC_BASE_URL=http://localhost:4000
+ANTHROPIC_BASE_URL=https://localhost:4000
 ANTHROPIC_AUTH_TOKEN=<litellm-key>
 ANTHROPIC_API_KEY=""          # must be empty or it wins over the token
 ANTHROPIC_MODEL=qwen-uni
@@ -462,6 +475,13 @@ pnpm dev
 # open http://localhost:5173/login
 ```
 
+The two `http://localhost:5173` URLs above are deliberately **not** `https`. They belong to the
+*managed project's own* dev server on the reviewer's machine, not to the office — a reviewer running
+`pnpm dev` gets whatever scheme that project's dev server binds, and declaring `https` here would
+print a link that does not resolve. The office's own rule (https everywhere, loopback included)
+governs the office's endpoints; where a project *is* exposed to the team, that is the preview
+environment below, and it is `https`.
+
 The report is also posted as the pull request body, so it lives where you already look.
 
 **Acceptance loop:** accept closes the task; send back reverts the merge and reopens it with your comment.
@@ -473,7 +493,7 @@ The highest-value feature in the system. Without it, every review costs five min
 When a task reaches QA review, the orchestrator builds and starts the branch on the VPS and puts the link in the report and on the task card:
 
 ```
-Preview: http://schedool-task42.office.local:8412
+Preview: https://schedool-task42.office.local:8412
 ```
 
 Implementation:

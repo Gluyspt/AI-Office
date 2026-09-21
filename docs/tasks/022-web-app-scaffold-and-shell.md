@@ -57,6 +57,12 @@ None.
 - [ ] The shell renders correctly at 1280 px and at 400 px width.
 - [ ] Colour and spacing are defined once as tokens in `global.css`; later UI tickets consume them rather than hardcoding values.
 
+## Decided
+
+- **The web app is served over `https` and its socket is `wss://`**, per the system-wide decision (see
+  the ticket index, "Decisions made"). `src/lib/api.ts` and `src/lib/ws.ts` must not fall back to
+  plaintext on failure — a silent downgrade is worse than a visible connection error.
+
 ## Open questions
 
 - [ ] **There is no authentication.** The design requires app-level login with per-user identity, because "every message, approval, and acceptance is attributed" — but that is step 9. This ticket ships with a dev-mode identity read from config. Every action the UI takes in step 3 will be attributed to that one identity, which is wrong but visible. Do not expose this app beyond localhost or a trusted network until step 9.
