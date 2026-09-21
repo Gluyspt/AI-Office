@@ -31,6 +31,12 @@ When asked to write a commit, do all three of these unless told otherwise:
 
 Don't split these into a question each time. One report at the end covering all three.
 
+Step 3 is also enforced by a `PostToolUse` hook (`.claude/hooks/push-after-commit.mjs`),
+so a commit pushes even if this file is not read. The hook never forces and never merges —
+a rejected push is reported and left for a human, per the conflict rule below. Its
+`systemMessage` goes to the user's terminal, not into the model's context, so confirm a push
+landed with `git status` rather than assuming.
+
 ### Linear
 
 - Workspace team **Gluyspt**, project **AI-Office**
