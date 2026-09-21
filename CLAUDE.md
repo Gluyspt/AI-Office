@@ -71,8 +71,15 @@ it hold:
 | UI overlays collected by `import.meta.glob` from `src/features/*/overlay.tsx` | 022 | add a panel, no shell edit |
 | File-based routes in `packages/web/src/routes/` | 022 | add a page, no route table edit |
 
-**Manifest exception:** dependency additions to an existing `package.json`, and appended lines in
-`.env.example`, are append-only and outside any ticket's file scope.
+**Manifest exception:** dependency additions to an existing `package.json`, appended lines in
+`.env.example`, and **a new `loadXConfig()` section appended to `packages/server/src/config.ts`**, are
+append-only and outside any ticket's file scope.
+
+The config case was added after ticket 004 shipped: `config.ts` is owned by 004 permanently, but
+every later server ticket needs its own environment variables validated, and 004 cannot invent a
+validation shape for needs that do not exist yet. Appending a self-contained
+`loadXConfig(env = process.env)` is therefore allowed. Editing an existing section, the shared
+helpers, or `ConfigError` is not — that belongs to 004.
 
 ### Stack
 

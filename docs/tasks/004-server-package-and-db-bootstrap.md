@@ -45,6 +45,19 @@ None. (`package.json` dependency additions are covered by the manifest exception
 - [ ] `withTransaction` rolls back on a thrown error, verified by a test that inserts a project then throws, and finds no row.
 - [ ] Pool size and statement timeout come from config, not hardcoded values.
 
+## Decided
+
+- **`config.ts` is append-only for later tickets.** This ticket owns the file, but it cannot validate
+  environment variables for tickets that do not exist yet — and inventing a shape for another
+  ticket's needs would be guessing. A later ticket may **append a self-contained
+  `loadXConfig(env = process.env)`**; it may not edit an existing section, the shared readers, or
+  `ConfigError`. Those stay here. Recorded in the manifest exception in `CLAUDE.md` and the ticket
+  index.
+- **Config is grouped into independently-validated sections, not one flat required object.** The
+  migrator needs the database and must not fail because an unrelated TLS path is unset. This is also
+  what makes the append-only rule safe: two tickets appending different sections cannot break each
+  other's validation.
+
 ## Open questions
 
 - [ ] The design says "the orchestrator's database" (singular) but also "one graph server per project". It does not say whether per-project data is isolated by schema, by a `project_id` column, or by separate databases. This ticket assumes **one database, `project_id` column on every project-scoped table**. If isolation needs to be stronger, it is cheaper to change now than after eight migrations.

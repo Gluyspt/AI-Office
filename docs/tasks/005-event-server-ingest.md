@@ -33,6 +33,15 @@ lets tickets 010, 020 and 027 add per-event behaviour without editing a shared d
 - `packages/shared/src/events.ts` — the `OfficeEvent` union and per-event payload types
 - `db/migrations/0002_events.sql` — `events` table: id, project_id, session_id (nullable at this stage), type, payload jsonb, received_at, plus an index on (project_id, received_at desc)
 
+### Files appended to (manifest exception, not owned)
+
+- `packages/server/src/config.ts` — **append** a `loadServerConfig()` validating `EVENT_SERVER_PORT`
+  (and any other variable this ticket reads). Do not edit the existing `loadDatabaseConfig()`,
+  `loadTlsConfig()`, the shared readers, or `ConfigError` — those belong to ticket 004. Follow the
+  established shape: required-with-no-default where the server genuinely cannot run without the
+  value, and a single `ConfigError` naming every problem found.
+- `.env.example`, and dependencies in `package.json`, per the standing manifest exception.
+
 ### Files modified
 
 None.
