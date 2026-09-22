@@ -38,12 +38,12 @@ None. (`package.json` dependency additions are covered by the manifest exception
 ## Acceptance criteria
 
 - [ ] `pnpm migrate` against an empty database creates `schema_migrations` and `projects`, and prints each migration it applied.
-- [ ] Running `pnpm migrate` a second time applies nothing and exits 0.
-- [ ] A migration file that throws mid-way leaves the database unchanged and the migration unrecorded — test with a deliberately broken temporary file.
-- [ ] The runner orders by filename, not by directory listing order — test with files `0002_b.sql` and `0010_a.sql` present and confirm `0002` runs first.
-- [ ] `config.ts` exits non-zero with a message naming the missing variable when `DATABASE_URL` is absent.
-- [ ] `withTransaction` rolls back on a thrown error, verified by a test that inserts a project then throws, and finds no row.
-- [ ] Pool size and statement timeout come from config, not hardcoded values.
+- [x] Running `pnpm migrate` a second time applies nothing and exits 0.
+- [x] A migration file that throws mid-way leaves the database unchanged and the migration unrecorded — test with a deliberately broken temporary file.
+- [x] The runner orders by filename, not by directory listing order — test with files `0002_b.sql` and `0010_a.sql` present and confirm `0002` runs first.
+- [x] `config.ts` exits non-zero with a message naming the missing variable when `DATABASE_URL` is absent.
+- [x] `withTransaction` rolls back on a thrown error, verified by a test that inserts a project then throws, and finds no row.
+- [x] Pool size and statement timeout come from config, not hardcoded values.
 
 ## Decided
 
@@ -57,6 +57,21 @@ None. (`package.json` dependency additions are covered by the manifest exception
   migrator needs the database and must not fail because an unrelated TLS path is unset. This is also
   what makes the append-only rule safe: two tickets appending different sections cannot break each
   other's validation.
+
+### Verification, 2026-09-23
+
+**This ticket shipped with no test file for its own database layer.** Five of the criteria above
+described behaviour nothing exercised — including "a file that throws leaves the database
+unchanged and unrecorded", which is the runner's riskiest promise. `packages/server/src/core/db/
+migrate.test.ts` now covers them: filename ordering with `9002_b` and `9010_a`, rollback on a
+mid-file failure, earlier files surviving a later failure, the out-of-order warning,
+`withTransaction` rolling back and committing, and `loadDatabaseConfig` refusing a missing
+`DATABASE_URL` and a non-integer pool size.
+
+**One criterion is still unticked and deliberately so:** "`pnpm migrate` against an *empty*
+database creates `schema_migrations` and `projects`". Every test above runs against the shared dev
+database, which is not empty, so the bootstrap path is exercised only by history. Closing it
+honestly needs a scratch database created and dropped per run — worth doing, not done here.
 
 ## Open questions
 

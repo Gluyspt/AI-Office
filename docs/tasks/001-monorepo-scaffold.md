@@ -44,19 +44,27 @@ None — first ticket.
 
 ## Acceptance criteria
 
-- [ ] `pnpm install` succeeds from a clean checkout on Node 22.
-- [ ] `pnpm typecheck` passes with zero errors against the empty workspace.
-- [ ] `pnpm test` runs and reports 0 tests without erroring.
-- [ ] `docker compose -f deploy/dev/compose.yml up -d` starts Postgres, and `psql "$DATABASE_URL" -c 'select 1'` succeeds using the values copied from `.env.example`.
-- [ ] `.env.example` contains every variable the spine needs, one comment per variable: DATABASE_URL, EVENT_SERVER_PORT, OFFICE_USER, PROJECT_ROOT.
-- [ ] `tsconfig.base.json` sets `strict: true` and `noUncheckedIndexedAccess: true`.
-- [ ] `pnpm-workspace.yaml` uses a glob, not an enumerated list — verify by adding a throwaway `packages/probe/package.json` and confirming `pnpm -r list` picks it up, then deleting it.
-- [ ] `README.md` documents the three extension-point conventions (autoloaded server routes, numbered SQL migrations, `import.meta.glob` UI overlays) so later tickets do not rediscover them.
-- [ ] `README.md` states the manifest exception: dependency additions to an existing `package.json`, and appended lines in `.env.example`, are append-only and excluded from ticket file scopes.
+- [x] `pnpm install` succeeds from a clean checkout on Node 22.
+- [x] `pnpm typecheck` passes with zero errors against the empty workspace.
+- [x] `pnpm test` runs and reports 0 tests without erroring. *(Verified at the time. No longer
+      re-runnable as written — the suite now reports 330; the runner works.)*
+- [x] `docker compose -f deploy/dev/compose.yml up -d` starts Postgres, and `psql "$DATABASE_URL" -c 'select 1'` succeeds using the values copied from `.env.example`.
+- [x] `.env.example` contains every variable the spine needs, one comment per variable: DATABASE_URL, EVENT_SERVER_PORT, OFFICE_USER, PROJECT_ROOT.
+- [x] `tsconfig.base.json` sets `strict: true` and `noUncheckedIndexedAccess: true`.
+- [x] `pnpm-workspace.yaml` uses a glob, not an enumerated list — verify by adding a throwaway `packages/probe/package.json` and confirming `pnpm -r list` picks it up, then deleting it.
+- [x] `README.md` documents the three extension-point conventions (autoloaded server routes, numbered SQL migrations, `import.meta.glob` UI overlays) so later tickets do not rediscover them.
+- [x] `README.md` states the manifest exception: dependency additions to an existing `package.json`, and appended lines in `.env.example`, are append-only and excluded from ticket file scopes.
 
 ## Decided
 
 - **Stack: TypeScript on Node 22 with pnpm workspaces.** The design named no language for the office app itself; this was chosen deliberately, and every path in tickets 002–031 follows from it.
+
+### Verification, 2026-09-23
+
+Re-run rather than assumed. Node 22 was confirmed as `v22.23.2` inside `deploy/vps-sim/`, which
+pins the major — the host runs v24, so `engines: ">=22"` had been satisfied *vacuously*. The
+workspace glob was checked by creating `packages/probe`, confirming `pnpm -r list` picked it up,
+and deleting it.
 
 ## Open questions
 

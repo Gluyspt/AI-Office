@@ -405,6 +405,47 @@ describe("scope ordering — against the database", () => {
   });
 });
 
+describe("scope-ordering blind spot (deferred to 019)", () => {
+  it("does NOT see overlap between two draft tasks, because a draft has acquired nothing", async () => {
+    // This test pins behaviour that is knowingly incomplete, so that
+    // whoever fixes it has to change this test and read why.
+    //
+    // A task's *declared* file scope has no storage. scope-ordering reads
+    // *acquired* scope from file_locks, and a draft task has acquired
+    // nothing — so two drafts declaring the same files produce no problem
+    // here at all. That is exactly the moment ticket 019 exists for: a
+    // human reviewing a draft batch before promotion, when an overlap is
+    // still cheap to fix.
+    //
+    // Decided 2026-09-23 to leave the storage question to 019 rather than
+    // add tasks.file_scope in 014 — 019 owns the planning flow and may want
+    // scope on the batch instead. See docs/tasks/README.md, "Decisions
+    // made".
+    //
+    // WHEN 019 FIXES THIS: this test should start failing. Replace it with
+    // one asserting the overlap IS reported.
+    const project = await makeProject();
+    const a = await makeTask(project, "draft a");
+    const b = await makeTask(project, "draft b");
+
+    // Both intend the same file. Neither has claimed, so neither holds a lock.
+    expect(await projectScopes(project)).toEqual([]);
+    expect(await checkProjectScopeOrdering(project)).toHaveLength(0);
+
+    // The rule itself is not broken — given the scopes, it reports the
+    // clash correctly. Only the *source* of scopes is missing.
+    expect(
+      orderedOverlapProblems(
+        [
+          { taskId: a, patterns: ["src/contested.ts"] },
+          { taskId: b, patterns: ["src/contested.ts"] },
+        ],
+        [],
+      ),
+    ).toHaveLength(1);
+  });
+});
+
 describe("isOrderedBefore", () => {
   it("follows a transitive chain", async () => {
     const project = await makeProject();

@@ -62,16 +62,24 @@ Unblocking early means a send-back can strand dependents that already started. T
 
 ## Decided during implementation
 
-- **A task's file scope is read from `file_locks` (ticket 015), because nothing stores a *declared*
-  scope.** No table has a column for it and the ownership map gives no ticket one; `file_locks`
-  holds *acquired* scope keyed by task, and `acquireScope` does not check task state, so a task can
-  hold its scope from draft onward. That makes the reading coherent — but it is an interpretation,
-  not something the design states.
+- **A task's file scope is read from `file_locks` (015), and the storage question is DEFERRED TO
+  019 — decided 2026-09-23, by a human, not assumed.** Nothing stores a *declared* scope: no table
+  has a column for it and the ownership map gives no ticket one. `file_locks` holds *acquired*
+  scope keyed by task, so this ticket reads that.
 
-  The consequence to know: **a task that has never acquired locks has an empty scope here and so
-  can never conflict.** Ticket 019 produces draft batches with scopes before anything is claimed,
-  and is where this assumption either holds or has to be replaced with real storage. Flagged rather
-  than resolved by inventing a column.
+  **The known blind spot, accepted deliberately:** a task that has never acquired locks has an
+  empty scope here, so `orderedOverlapProblems` finds nothing between two **draft** tasks — which
+  is exactly when a human reviewing a batch could still fix an overlap cheaply. The validator
+  guards claimed work, not planned work.
+
+  Adding `tasks.file_scope` now was considered and rejected in favour of letting **019** decide,
+  since 019 owns the planning flow and `0009_batches.sql` and may want scope on the batch rather
+  than the task. `scope-ordering.ts` is already written to make that switch cheap: the rule is a
+  **pure** function over supplied scopes, and only `projectScopes()` knows where they come from.
+
+  Pinned by a test — `scope-ordering blind spot (deferred to 019)` in `dependencies.test.ts` —
+  which asserts the current behaviour so that whoever changes it has to change the test and read
+  why.
 
 - **`PUT /tasks/:id/dependencies` replaces the whole set** rather than offering add/remove
   endpoints. The scope-ordering check has to run against the *resulting* graph, and a caller

@@ -39,6 +39,27 @@ None.
 
 ## Decided
 
+- **INHERITED FROM 014 — this ticket owns where a task's declared file scope is stored.** Decided
+  2026-09-23: nothing stores it today. `file_locks` (015) holds *acquired* scope, and 014's
+  `scope-ordering.ts` reads that, which means **overlap between two draft tasks is invisible** —
+  a draft has acquired nothing, so the validator finds nothing to complain about. That is precisely
+  the moment this ticket exists for: a human reviewing a draft batch before promotion.
+
+  The choice was deliberately left here rather than settled in 014, because this ticket owns the
+  planning flow and `0009_batches.sql` and may want scope on the **batch** rather than the task.
+  Two shapes to pick between:
+
+  - `tasks.file_scope text[]` — declared at planning, acquired at claim by 017. Separates
+    declaration from exclusivity cleanly.
+  - scope on the batch row — keeps a draft batch self-contained until promotion.
+
+  Whichever: `scope-ordering.ts` is written so only `projectScopes()` knows where scopes come
+  from. The rule itself (`orderedOverlapProblems`) is a pure function over supplied scopes and
+  edges, so switching the source is one function, not a rewrite. The README decision "batch scope
+  overlap is allowed when a dependency orders it" is already implemented against it.
+
+
+
 **Reviewing the draft batch is the approval gate; there is no second one.** Start working promotes the tasks, spawns the department leads, and the leads claim immediately — the design's "agents begin", read literally.
 
 The protection that makes this safe is the spawn cap from ticket 018, enforced at spawn time: a spawn that would exceed the per-project cap or the global memory floor is **refused and queued**, never silently dropped. That stands in for the circuit breaker, which does not exist until step 7.
