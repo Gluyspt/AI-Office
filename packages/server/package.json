@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@fastify/websocket": "11.3.1",
     "@office/shared": "workspace:*",
     "dotenv": "^18.0.0",
     "fastify": "^5.2.0",
@@ -16,6 +17,8 @@
   "devDependencies": {
     "typescript": "^5.6.0",
     "@types/node": "^22.0.0",
-    "@types/pg": "^8.11.0"
+    "@types/pg": "^8.11.0",
+    "@types/ws": "8.18.1",
+    "ws": "8.18.3"
   }
 }

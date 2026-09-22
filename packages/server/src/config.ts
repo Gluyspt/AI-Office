@@ -179,3 +179,56 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
   finish(reader);
   return { port, hookIngestTokens };
 }
+
+// --- Ticket 006: WebSocket fan-out -------------------------------------------
+//
+// Appended under the manifest exception recorded in docs/tasks/README.md
+// ("A later ticket may append a loadXConfig() to config.ts") — 004 owns this
+// file permanently; this section does not touch ConfigError or any
+// loadXConfig() above, and reuses the same Reader/optionalInt/finish helpers
+// ticket 005's section above already established as shared, not owned by
+// either ticket.
+//
+// All three values have safe defaults, unlike EVENT_SERVER_PORT and
+// HOOK_INGEST_TOKENS above (which have none because a port or a secret has
+// no fabricatable safe value). These are the opposite case: the ticket's own
+// "Decided" section fixes the heartbeat at 30s, and the backpressure limit
+// is ordinary tuning with no project-specific measurement behind it yet —
+// see docs/tasks/README.md's "Still open" table for the numbers that
+// genuinely have no default yet (spawn caps, memory floor, lock TTL, pause
+// deadline). A default that a test can override to a short interval (so a
+// heartbeat test doesn't wait 60s+ real time) beats forcing every
+// environment to set these just to start the server.
+export interface WsConfig {
+  readonly heartbeatIntervalMs: number;
+  readonly heartbeatMaxMissedPongs: number;
+  readonly backpressureLimitBytes: number;
+}
+
+const DEFAULT_WS_HEARTBEAT_INTERVAL_MS = 30_000;
+const DEFAULT_WS_HEARTBEAT_MAX_MISSED_PONGS = 2;
+const DEFAULT_WS_BACKPRESSURE_LIMIT_BYTES = 1_000_000;
+
+export function loadWsConfig(env: NodeJS.ProcessEnv = process.env): WsConfig {
+  const reader: Reader = { env, problems: [] };
+  const heartbeatIntervalMs = optionalInt(
+    reader,
+    "WS_HEARTBEAT_INTERVAL_MS",
+    DEFAULT_WS_HEARTBEAT_INTERVAL_MS,
+    1,
+  );
+  const heartbeatMaxMissedPongs = optionalInt(
+    reader,
+    "WS_HEARTBEAT_MAX_MISSED_PONGS",
+    DEFAULT_WS_HEARTBEAT_MAX_MISSED_PONGS,
+    1,
+  );
+  const backpressureLimitBytes = optionalInt(
+    reader,
+    "WS_BACKPRESSURE_LIMIT_BYTES",
+    DEFAULT_WS_BACKPRESSURE_LIMIT_BYTES,
+    1,
+  );
+  finish(reader);
+  return { heartbeatIntervalMs, heartbeatMaxMissedPongs, backpressureLimitBytes };
+}
