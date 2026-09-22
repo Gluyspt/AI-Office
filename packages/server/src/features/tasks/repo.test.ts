@@ -90,7 +90,12 @@ afterAll(async () => {
   for (const id of createdProjects) {
     await pool.query("delete from projects where id = $1", [id]);
   }
-  await pool.query("delete from events where type = 'TaskCreated'");
+  // Scoped to this file's own tasks. Deleting by type alone would remove
+  // rows another test file is still asserting on, in a parallel worker.
+  await pool.query(
+    "delete from events where type = 'TaskCreated' and payload->>'project_id' = any($1::text[])",
+    [createdProjects],
+  );
 });
 
 describe("board — columns and chips", () => {
@@ -352,19 +357,19 @@ describe("HTTP surface", () => {
   });
 
   it("creating a task emits a TaskCreated event so clients need not poll", async () => {
-    const before = await pool.query<{ n: string }>(
-      "select count(*) as n from events where type = 'TaskCreated'",
-    );
     const id = await makeTask({ title: "announced" });
-    const after = await pool.query<{ n: string }>(
-      "select count(*) as n from events where type = 'TaskCreated'",
-    );
-    expect(Number(after.rows[0]!.n)).toBe(Number(before.rows[0]!.n) + 1);
 
-    const stored = await pool.query<{ payload: { task_id: string } }>(
-      "select payload from events where type = 'TaskCreated' order by received_at desc limit 1",
+    // Asserted on THIS task's event, not on a global count delta. Other
+    // test files create tasks in parallel workers against the same
+    // database, so "one more TaskCreated than a moment ago" is a claim
+    // about the whole table that any concurrent insert falsifies — the
+    // same race that `listEvents({limit: 1})` had.
+    const stored = await pool.query<{ payload: { task_id: string; title: string } }>(
+      "select payload from events where type = 'TaskCreated' and payload->>'task_id' = $1",
+      [id],
     );
-    expect(stored.rows[0]!.payload.task_id).toBe(id);
+    expect(stored.rows).toHaveLength(1);
+    expect(stored.rows[0]!.payload.title).toBe("announced");
   });
 
   it("GET /board answers 400 for a state outside the union", async () => {
