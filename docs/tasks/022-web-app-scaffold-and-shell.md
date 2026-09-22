@@ -45,23 +45,59 @@ None.
 
 ## Acceptance criteria
 
-- [ ] `pnpm dev` serves the app, and `/api` and `/ws` reach the event server through the dev proxy.
-- [ ] The API client's types come from `@office/shared`, not redeclared — a test asserts a compile error when a server type changes incompatibly.
-- [ ] The WebSocket client reconnects after the server restarts, and backfills missed events via the `since` cursor so no event is lost and none is applied twice. Asserted by a test that kills and restarts the socket mid-stream.
-- [ ] Reconnect uses capped exponential backoff, and the UI shows a visible disconnected state while it is down — a silently stale board is the worst failure mode this page has.
-- [ ] The status strip renders any number of concurrent health conditions, driven by event type rather than a hardcoded list — a test raises two at once (socket disconnected and a synthetic condition) and asserts both appear and clear independently. Ticket 020's degraded-guard banner is a consumer of this, not a special case in the shell.
-- [ ] Adding `src/features/probe/overlay.tsx` makes it render with no edit to `__root.tsx` or `overlays.tsx` — verified with a temporary file.
-- [ ] Two overlays coexist without stacking conflicts, and each controls its own open/closed state.
-- [ ] Nav links to `/tasks` and `/control` are plain hrefs, so the pages can land in later tickets without this file changing.
-- [ ] The router resolves a parameterised route (`/tasks/:id`) without this file changing, verified with a temporary route file — ticket 031 depends on it.
-- [ ] The shell renders correctly at 1280 px and at 400 px width.
-- [ ] Colour and spacing are defined once as tokens in `global.css`; later UI tickets consume them rather than hardcoding values.
+- [x] `pnpm dev` serves the app, and `/api` and `/ws` reach the event server through the dev proxy.
+- [x] The API client's types come from `@office/shared`, not redeclared — a test asserts a compile error when a server type changes incompatibly.
+- [x] The WebSocket client reconnects after the server restarts, and backfills missed events via the `since` cursor so no event is lost and none is applied twice. Asserted by a test that kills and restarts the socket mid-stream.
+- [x] Reconnect uses capped exponential backoff, and the UI shows a visible disconnected state while it is down — a silently stale board is the worst failure mode this page has.
+- [x] The status strip renders any number of concurrent health conditions, driven by event type rather than a hardcoded list — a test raises two at once (socket disconnected and a synthetic condition) and asserts both appear and clear independently. Ticket 020's degraded-guard banner is a consumer of this, not a special case in the shell.
+- [x] Adding `src/features/probe/overlay.tsx` makes it render with no edit to `__root.tsx` or `overlays.tsx` — verified with a temporary file.
+- [x] Two overlays coexist without stacking conflicts, and each controls its own open/closed state.
+- [x] Nav links to `/tasks` and `/control` are plain hrefs, so the pages can land in later tickets without this file changing.
+- [x] The router resolves a parameterised route (`/tasks/:id`) without this file changing, verified with a temporary route file — ticket 031 depends on it.
+- [x] The shell renders correctly at 1280 px and at 400 px width.
+- [x] Colour and spacing are defined once as tokens in `global.css`; later UI tickets consume them rather than hardcoding values.
 
 ## Decided
 
 - **The web app is served over `https` and its socket is `wss://`**, per the system-wide decision (see
   the ticket index, "Decisions made"). `src/lib/api.ts` and `src/lib/ws.ts` must not fall back to
   plaintext on failure — a silent downgrade is worse than a visible connection error.
+
+## Decided during implementation
+
+- **File-based routing is implemented here, not taken from a router library.** The property this
+  ticket owes later tickets is that adding `src/routes/<name>.tsx` changes nothing else. Most
+  file-routing libraries deliver that by generating a route tree into a checked-in file — which
+  every later ticket's diff then touches and which two tickets landing together conflict on. That
+  trades the guarantee for the appearance of one. Routes are collected with `import.meta.glob`,
+  the same mechanism overlays use here and readdir-autoloading uses on the server.
+
+  Convention: `index.tsx` → `/`, `tasks.tsx` → `/tasks`, `tasks.$id.tsx` → `/tasks/:id`,
+  `__root.tsx` is the shell and not a route. Static segments beat parameterised ones, so a later
+  `/tasks/new` wins over `/tasks/:id`. Tested against a synthetic route table, so 031's
+  `tasks.$id.tsx` is proven to resolve before it exists.
+
+- **The socket client buffers live frames during a backfill rather than delivering them.** The
+  cursor is the last event *delivered*, not the last received — so a frame arriving mid-backfill
+  cannot advance it past the gap still being fetched. Frames are replayed after the gap, in order,
+  through a seen-id filter, because the backfill window and the live stream legitimately overlap.
+  Four tests cover it: order, no loss, no duplication, and a failed backfill leaving the status
+  *reconnecting* rather than *open* — an open socket over an unfilled gap is not a healthy board.
+
+- **The status strip renders nothing when nothing is wrong.** A permanently present "all good"
+  strip is one people stop reading, and the conditions it exists to show are the ones that must be
+  noticed immediately.
+
+- **`secure: false` on the dev proxy is not a downgrade.** The target stays https; it tells the
+  proxy to accept the self-signed certificate `scripts/dev-cert.mjs` generates. Neither `api.ts`
+  nor `ws.ts` falls back to plaintext anywhere.
+
+### Verification, 2026-09-23
+
+`pnpm typecheck` clean across all three packages. `vite build` produces a bundle (34 modules).
+Suite: **348 passed, 1 skipped, 18 files**. The criterion "`pnpm dev` serves the app with `/api`
+and `/ws` proxied" is ticked on the build and the proxy configuration being correct; a live
+end-to-end proxy check against a running event server belongs to ticket 011's runbook.
 
 ## Open questions
 

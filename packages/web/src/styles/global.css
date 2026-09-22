@@ -1,0 +1,280 @@
+/* Design tokens, defined once.
+ *
+ * Every later UI ticket consumes these rather than hardcoding a colour or a
+ * gap — 023's columns, 024's cards and chips, 026's chat panel, 029's stop
+ * controls. A hex code appearing in a feature stylesheet is a bug in that
+ * feature, not a local decision.
+ *
+ * Light and dark both defined here. Dark follows the OS rather than a
+ * toggle: this is an operations page people leave open all day, and matching
+ * the rest of their desktop matters more than a preference control nobody
+ * visits twice.
+ */
+
+:root {
+  /* Surfaces, back to front. */
+  --surface-page: #f6f7f9;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eceef2;
+  --surface-overlay: #ffffff;
+
+  --border: #d8dce3;
+  --border-strong: #b6bcc7;
+
+  --text: #16191d;
+  --text-muted: #5b6472;
+  --text-inverse: #ffffff;
+
+  --accent: #2f5bd7;
+  --accent-text: #ffffff;
+
+  /* Severity. Used by the status strip and by state chips, so a warning
+   * looks the same wherever it appears. */
+  --info: #2f5bd7;
+  --info-surface: #e6ecfb;
+  --warning: #8a5a00;
+  --warning-surface: #fdf1d8;
+  --error: #a3271f;
+  --error-surface: #fbe6e4;
+  --success: #1f6b3a;
+  --success-surface: #e2f3e8;
+
+  /* Spacing: a 4px scale. Two names for the common gaps so call sites read
+   * as intent rather than arithmetic. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --radius: 6px;
+  --radius-lg: 10px;
+
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --text-sm: 12px;
+  --text-base: 14px;
+  --text-lg: 18px;
+  --text-xl: 24px;
+
+  --shadow: 0 1px 2px rgba(16, 19, 24, 0.08), 0 2px 8px rgba(16, 19, 24, 0.06);
+
+  /* Layout constants later tickets align to. */
+  --header-height: 52px;
+  --column-min-width: 280px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-page: #14171b;
+    --surface-raised: #1c2025;
+    --surface-sunken: #101317;
+    --surface-overlay: #22272e;
+
+    --border: #2d333b;
+    --border-strong: #3d444d;
+
+    --text: #e6e9ee;
+    --text-muted: #9aa4b2;
+
+    --accent: #6f95ff;
+    --accent-text: #0f1217;
+
+    --info: #6f95ff;
+    --info-surface: #1b2438;
+    --warning: #e0b055;
+    --warning-surface: #33280f;
+    --error: #ef7b72;
+    --error-surface: #3a1c19;
+    --success: #6cc48c;
+    --success-surface: #15301f;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: var(--text-base);
+  color: var(--text);
+  background: var(--surface-page);
+  -webkit-font-smoothing: antialiased;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+
+/* --- Shell ----------------------------------------------------------- */
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: var(--header-height);
+  padding: 0 var(--space-4);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
+  /* Wraps rather than overflowing at 400px. */
+  flex-wrap: wrap;
+}
+
+.app__brand {
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.app__nav {
+  display: flex;
+  gap: var(--space-3);
+  margin-right: auto;
+}
+
+.app__nav a {
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+}
+
+.app__nav a:hover {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+.app__nav a[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.app__identity {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-2);
+}
+
+.app__main {
+  flex: 1;
+  padding: var(--space-5) var(--space-4);
+}
+
+/* --- Status strip ------------------------------------------------------ */
+
+.system-status {
+  display: flex;
+  flex-direction: column;
+}
+
+.system-status__item {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.system-status__item--error {
+  background: var(--error-surface);
+  color: var(--error);
+}
+.system-status__item--warning {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+.system-status__item--info {
+  background: var(--info-surface);
+  color: var(--info);
+}
+
+.system-status__message {
+  font-weight: 600;
+}
+
+.system-status__detail {
+  font-size: var(--text-sm);
+  opacity: 0.85;
+}
+
+/* --- Pages ------------------------------------------------------------- */
+
+.page {
+  max-width: 820px;
+}
+
+.page h1 {
+  font-size: var(--text-xl);
+  margin: 0 0 var(--space-4);
+}
+
+.page__note {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.page__error {
+  background: var(--error-surface);
+  color: var(--error);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+
+.button {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--accent-text);
+  text-decoration: none;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius);
+  font-weight: 600;
+}
+
+/* --- Overlay host ------------------------------------------------------ */
+
+/* Fixed and pointer-transparent, so a closed overlay is inert rather than
+ * an invisible click blocker over the whole page. Each slot gets its own
+ * stacking context, so two open at once cannot fight over z-index. */
+.overlay-host {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.overlay-slot {
+  position: absolute;
+  inset: 0;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+/* Anything an overlay actually renders takes pointer events back. */
+.overlay-slot > * {
+  pointer-events: auto;
+}
+
+@media (max-width: 600px) {
+  .app__main {
+    padding: var(--space-4) var(--space-3);
+  }
+  .app__identity {
+    order: 3;
+  }
+}
