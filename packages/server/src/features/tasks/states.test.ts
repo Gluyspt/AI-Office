@@ -268,6 +268,45 @@ afterAll(async () => {
   if (projectId) await pool.query("delete from projects where id = $1", [projectId]);
 });
 
+describe("announcing a transition", () => {
+  it("emits TaskTransitioned with the project on the column, so a board hears it", async () => {
+    // Before this existed nothing in the system emitted on a state change,
+    // and ticket 023's board could reconcile correctly against a synthetic
+    // event while never seeing a real one.
+    const taskId = await makeTask();
+    await transition({ taskId, to: "pending", actor: "test", actorKind: "human" });
+
+    const events = await pool.query<{
+      payload: { task_id: string; from_state: string; to_state: string };
+      project_id: string | null;
+    }>(
+      "select payload, project_id from events where type = 'TaskTransitioned' and payload->>'task_id' = $1",
+      [taskId],
+    );
+    expect(events.rows).toHaveLength(1);
+    expect(events.rows[0]!.payload.from_state).toBe("draft");
+    expect(events.rows[0]!.payload.to_state).toBe("pending");
+    // The column is what ticket 006's bus filters subscriptions on.
+    expect(events.rows[0]!.project_id).toBe(projectId);
+  });
+
+  it("does not announce when the caller owns the transaction", async () => {
+    // An event emitted inside someone else's transaction survives their
+    // ROLLBACK, and nothing takes the claim back. The caller commits, so
+    // the caller announces.
+    const taskId = await makeTask();
+    await withTransaction(async (client) => {
+      await transition({ taskId, to: "pending", actor: "test", actorKind: "human" }, client);
+    });
+
+    const events = await pool.query(
+      "select 1 from events where type = 'TaskTransitioned' and payload->>'task_id' = $1",
+      [taskId],
+    );
+    expect(events.rowCount).toBe(0);
+  });
+});
+
 describe("transition() against the database", () => {
   // 30s, not the 5s default. This walks every edge in TASK_TRANSITIONS with
   // a real transaction each — ~1.2s on an idle database, but vitest runs

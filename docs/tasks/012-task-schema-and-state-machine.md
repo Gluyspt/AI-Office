@@ -47,6 +47,20 @@ None.
 - [ ] A dev completing work cannot reach `done` in one step; a test asserts `in progress → done` is rejected, per "A dev calling `complete_task` moves the task to **ready for QA**, never straight to done."
 - [ ] `token_cost` and `turn_count` default to zero and are never null, so the card in step 3 always has a number to render.
 
+## Added after the fact (2026-09-23)
+
+- **`transition()` emits `TaskTransitioned`.** It did not originally, and nothing else announced a
+  state change either — which meant ticket 023's board could reconcile correctly against a
+  synthetic event and never see a real one. Found while building the board; fixed here because
+  `states.ts` is this ticket's file.
+
+- **The announcement is deliberately NOT inside the transaction.** `recordSystemEvent` writes
+  through the shared pool, not the caller's client, so an event emitted mid-transaction survives a
+  `ROLLBACK` — a claim to the rest of the system that something happened, which nothing then takes
+  back. `transition()` announces only on the path where it owns the commit. A caller supplying its
+  own client owns the commit and therefore the announcement: `announceTransition(result)` is
+  exported for it, and **ticket 017's `claim`/`complete` must call it after committing.**
+
 ## Open questions
 
 - [ ] The design names the pipeline states shown as chips inside the In progress column (in progress, paused, ready for QA, CI, QA review, awaiting lead) but writes "lead approval" in the lifecycle diagram and "awaiting lead" in the UI table. Assumed the same state under two labels; one name is picked in code and the other treated as display text. Confirm.

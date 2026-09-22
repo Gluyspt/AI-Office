@@ -42,6 +42,15 @@ leaves a named seam for it.
 
 None.
 
+## Inherited requirement (added 2026-09-23)
+
+- **`claim_task` and `complete_task` must call `announceTransition(result)` after their
+  transaction commits.** Both pass their own client to `transition()`, and on that path
+  `transition()` deliberately does not emit: `recordSystemEvent` writes through the shared pool
+  rather than the caller's client, so an event emitted inside a transaction survives a `ROLLBACK`
+  and announces a change that never happened. The caller owns the commit, so the caller owns the
+  announcement. Without it the board will not move a card when an agent claims or completes work.
+
 ## Acceptance criteria
 
 - [ ] `claim_task` succeeds only when all three checks pass; each failure returns a distinct, actionable message naming what blocked it and who owns the conflict.

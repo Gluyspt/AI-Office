@@ -78,17 +78,23 @@ None.
   re-renders, and the hook loops forever. Keying only on a serialised `filterKey` makes the hook
   safe to call normally. This was a real defect, not a test artifact.
 
-## ⚠️ Blocking gap for this ticket's headline criterion
+## The gap this ticket found, now closed
 
-**`transition()` emits no event.** Nothing in the system announces that a task changed state: 013
-emits `TaskCreated`, 014 `TasksUnblocked`, 015 `FileLocksSwept`, and that is the entire list.
-The criterion "a task moved by an agent relocates within one second" is therefore implemented and
-tested against a synthetic event, but **will not fire in production** until some ticket emits on
-transition.
+**`transition()` emitted no event.** Nothing in the system announced a state change: 013 emitted
+`TaskCreated`, 014 `TasksUnblocked`, 015 `FileLocksSwept`, and that was the entire list — so this
+ticket's headline criterion reconciled correctly against a *synthetic* event and would never have
+seen a real one.
 
-The board needs no change when it does — it already reconciles on any `task_id` — so the fix is
-one `recordSystemEvent` call in `states.ts` (012's file) or in `claim`/`complete` (017's). Flagged
-rather than fixed here, since neither file is this ticket's.
+Fixed in `states.ts`: `transition()` now emits `TaskTransitioned` carrying the project on the
+`project_id` **column**, which is what ticket 006's bus filters subscriptions on. The board needed
+no change — it already reconciles on any event naming a `task_id`.
+
+One subtlety worth keeping: the announcement happens **only on the path where `transition()` owns
+the transaction**. `recordSystemEvent` writes through the shared pool rather than the caller's
+client, so emitting inside a caller-supplied transaction would survive that caller's `ROLLBACK` —
+announcing a change that never happened, with nothing to take it back. A caller passing its own
+client owns the commit and therefore owns the announcement: `announceTransition(result)` is
+exported for exactly that, and ticket 017's `claim`/`complete` must call it after committing.
 
 ## Open questions
 

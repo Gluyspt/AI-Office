@@ -31,6 +31,7 @@ import type {
 import { TASK_STATES, asTaskState, isTaskActorKind, isTaskDepartment } from "@office/shared/tasks";
 import { asProjectId, asTaskId, type TaskId } from "@office/shared/ids";
 import { query, withTransaction } from "../../core/db/pool.ts";
+import { recordSystemEvent } from "../events/ingest.ts";
 
 // --- The transition table ------------------------------------------------------
 
@@ -502,14 +503,64 @@ async function applyTransition(
  * ConcurrentTransitionError; never returns a "didn't work" value, and never
  * no-ops.
  */
+/**
+ * Announces a transition that has actually committed.
+ *
+ * Separate from `transition()` because of *when* it is safe to call. An
+ * event is a claim to the rest of the system that something happened; if it
+ * is emitted inside a transaction that later rolls back, the claim is false
+ * and nothing takes it back. `recordSystemEvent` writes through the shared
+ * pool rather than the caller's transaction, so emitting mid-transaction
+ * would survive a rollback.
+ *
+ * `transition()` calls this itself on the path where it owns the
+ * transaction. A caller that supplies its own client owns the commit, and
+ * therefore owns the announcement: call this once the transaction has
+ * committed.
+ */
+export async function announceTransition(result: TransitionResult): Promise<void> {
+  await recordSystemEvent(
+    "TaskTransitioned",
+    {
+      task_id: result.task.id,
+      project_id: result.task.projectId,
+      from_state: result.change.fromState,
+      to_state: result.change.toState,
+      actor: result.change.actor,
+      actor_kind: result.change.actorKind,
+      reason: result.change.reason,
+      occurred_at: result.change.occurredAt.toISOString(),
+    },
+    null,
+    // The column, not just the payload: ticket 006's bus filters
+    // subscriptions on it, and a board watching one project is exactly who
+    // needs to hear that a card moved.
+    result.task.projectId,
+  );
+}
+
+/**
+ * Applies a transition, and announces it when it owns the commit.
+ *
+ * The announcement is what makes a card move on the board. Before this
+ * existed, nothing in the system emitted on a state change — 013 emitted
+ * TaskCreated, 014 TasksUnblocked, 015 FileLocksSwept, and that was the
+ * whole list — so ticket 023's board reconciled correctly against a
+ * synthetic event and would never have seen a real one.
+ */
 export async function transition(
   input: TransitionInput,
   client?: PoolClient,
 ): Promise<TransitionResult> {
   if (client) {
+    // The caller owns the transaction, so the caller owns the
+    // announcement: see announceTransition. Emitting here could announce a
+    // change the caller's ROLLBACK then discards.
     return applyTransition(client, input);
   }
-  return withTransaction((owned) => applyTransition(owned, input));
+  const result = await withTransaction((owned) => applyTransition(owned, input));
+  await announceTransition(result);
+  return result;
 }
 
 /**
