@@ -1,0 +1,51 @@
+# VPS simulator. Separate from docker-compose.dev.yml (ticket 001, Postgres
+# for local dev) because this is a different job: a Linux host with the
+# agent accounts, the scoped sudoers rule and tmux, for the checks that
+# tickets 001-007 defer to "the VPS" but that do not actually need one.
+#
+#   docker compose -f docker-compose.vps-sim.yml build
+#   docker compose -f docker-compose.vps-sim.yml run --rm vps-sim
+#
+# Then inside:
+#   ./spikes/tmux/drive-session.sh doctor
+#   ./spikes/tmux/drive-session.sh sudo-parity
+#
+# See deploy/README.md for what this proves and what it cannot.
+services:
+  vps-sim:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.vps-sim
+    # tmux needs a TTY to attach a session to, and the harness reads panes.
+    tty: true
+    stdin_open: true
+    volumes:
+      # The repo, read-only: the harness is run from here, and nothing in
+      # the container should be able to modify the orchestrator source. The
+      # harness writes only under SPIKE_TMPDIR, never into the repo.
+      - .:/srv/office/orchestrator:ro
+      # Scratch for the harness's rundir. A named volume, not a bind mount,
+      # so nothing untracked appears in the repo (.gitignore belongs to
+      # ticket 001). Results do not need it: every subcommand writes its TSV
+      # to stdout, so capture a run the way the spike doc does --
+      #   docker compose -f docker-compose.vps-sim.yml run --rm vps-sim \
+      #     ./spikes/tmux/drive-session.sh all --trials 20 > 003-results.tsv
+      - vps-sim-scratch:/srv/office/out
+    environment:
+      SPIKE_TMPDIR: /srv/office/out
+      # Cheapest model -- `chars` and `deliver` start real agents.
+      SPIKE_CLAUDE_ARGS: "--model sonnet"
+    # Authentication is NOT wired up by default, on purpose. A Claude login
+    # on this account is single-session, so mounting the live credential
+    # directory can cost the host session. To authenticate, mount a COPY:
+    #
+    #   cp -r ~/.claude /tmp/claude-copy
+    #   then add, under volumes:
+    #     - /tmp/claude-copy:/home/gluy/.claude
+    #
+    # Without it, `doctor` and `sudo-parity` still run in full. The
+    # subcommands that drive a live TUI (deliver, chars, interrupt,
+    # session-end, rss) need an authenticated agent.
+
+volumes:
+  vps-sim-scratch:

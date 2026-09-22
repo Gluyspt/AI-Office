@@ -1,0 +1,89 @@
+# A Linux host that looks like the target VPS, for the checks that do not
+# need the target VPS's hardware.
+#
+# WHAT THIS PROVES, at full fidelity -- these are user, permission and
+# process semantics, and a container has exactly the real ones:
+#
+#   * sudo -u parity: $HOME and CLAUDE_CONFIG_DIR resolution under
+#     `sudo -n -u <agent> tmux`, and whether the two users share a tmux
+#     socket. Spike 002 section 7 left this DEFERRED, NOT ATTEMPTED --
+#     because on WSL sudo demands a password. Here we own /etc/sudoers.
+#   * visudo -c -f on deploy/sudoers.d/office, and the whole sudoers set
+#   * that the office account cannot reach root, or run anything but tmux
+#   * Node 22 exactly, closing ticket 001's criterion (package.json says
+#     ">=22", so the v24 run satisfied it vacuously)
+#   * the provisioning steps themselves, which no ticket owns
+#
+# WHAT THIS CANNOT PROVE, and do not pretend otherwise:
+#
+#   * per-agent RSS, and every timing. Docker Desktop on Windows runs on the
+#     WSL2 kernel -- measured on this machine:
+#         kernel 6.18.33.2-microsoft-standard-WSL2, MemTotal 8.29 GB
+#     which is the same Microsoft-patched kernel, the same Hyper-V utility
+#     VM and the same ballooned memory that spike 003 already warned its
+#     numbers came from. A container here adds no fidelity at all. Ticket
+#     018's cap still has no target-measured input; ticket 007 still owns
+#     the VPS re-measurement.
+#
+# Build and run from the repo root:
+#   docker compose -f docker-compose.vps-sim.yml build
+#   docker compose -f docker-compose.vps-sim.yml run --rm vps-sim
+
+# Node 22 on Debian bookworm. The tag pins the major the workspace declares.
+FROM node:22-bookworm-slim
+
+# Provisioning installs tmux/sudo/procps/openssl/git itself, so the image
+# stays honest about what the script is responsible for -- if a package is
+# missing on the real VPS, the script is what has to notice.
+COPY deploy/sudoers.d/office /opt/office-provision/sudoers.d/office
+COPY deploy/provision-host.sh /opt/office-provision/provision-host.sh
+RUN chmod +x /opt/office-provision/provision-host.sh
+
+# Accounts, scoped sudoers, directories, dev cert -- and the verification
+# block. The build FAILS if the sudo grant does not actually work, so a
+# broken sudoers file cannot reach a running container.
+ENV OFFICE_USER=office \
+    TMUX_AGENT_USERS=gluy,user2,user3 \
+    PROJECT_ROOT=/srv/office/projects \
+    TLS_DIR=/srv/office/tls \
+    TMUX_BIN=/usr/bin/tmux
+RUN /opt/office-provision/provision-host.sh
+
+# Claude Code itself. Installed, deliberately NOT logged in: authentication
+# is the operator's call, and on this account a login is single-session --
+# logging in here can cost the host session. See deploy/README.md.
+RUN npm install -g @anthropic-ai/claude-code \
+ && claude --version
+
+# A throwaway repo for the harness to drive an agent inside. Never the
+# orchestrator repo: the harness starts real agents in this directory.
+RUN mkdir -p /srv/throwaway \
+ && cd /srv/throwaway \
+ && git init -q \
+ && git config user.email office@localhost \
+ && git config user.name office \
+ && echo "throwaway repo for spike 003 harness runs" > README.md \
+ && git add -A \
+ && git commit -qm "throwaway" \
+ && chown -R office:office /srv/throwaway
+
+# Scratch dir for the harness's rundir, owned by the account that runs it.
+# This has to exist IN THE IMAGE: when the compose file's named volume is
+# first mounted here, Docker seeds it from the image path -- ownership
+# included. Without it the fresh volume is root-owned and the harness dies
+# with "mkdir: cannot create directory '/srv/office/out/run-1'".
+RUN mkdir -p /srv/office/out && chown office:office /srv/office/out
+
+# The harness reads these; the compose file can override any of them.
+ENV SPIKE_USER=gluy \
+    SPIKE_PROJECT_DIR=/srv/throwaway \
+    SPIKE_CONFIG_DIR=/home/gluy/.claude \
+    SPIKE_CLAUDE_ARGS="--model sonnet" \
+    SPIKE_TMUX=/usr/bin/tmux
+
+# Run as the orchestrator account, which is what the VPS does. Running the
+# harness as root would test a path the orchestrator never takes -- and the
+# harness's own doctor warns about exactly that when SPIKE_USER is unset.
+USER office
+WORKDIR /srv/office/orchestrator
+CMD ["/bin/bash"]
