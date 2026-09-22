@@ -38,18 +38,57 @@ None.
 
 ## Acceptance criteria
 
-- [ ] The four columns are exactly Draft, To do, In progress, Done, in that order.
-- [ ] A task moved by an agent relocates to the correct column within one second of the event, without a full page refetch.
-- [ ] Applying an event for a task not currently loaded triggers a targeted fetch rather than a full board reload.
-- [ ] Out-of-order events do not regress state: an older event arriving after a newer one for the same task is discarded, asserted by test.
-- [ ] Scroll position and any open interaction survive a live update — a card update while the user is scrolled halfway down In progress does not jump the view.
-- [ ] A column with no tasks renders a meaningful empty state, not blank space; the Draft column's empty state says how a batch gets created.
-- [ ] The Done column groups its 7-day window under day headers — Today, Yesterday, then dates — newest first.
-- [ ] Below those, "+N earlier" applies a state filter on the existing filter bar rather than opening a separate view. A test asserts the filter is applied and is clearable like any other.
-- [ ] Columns render at 400 px width by stacking, per the design's mobile-reachability goal; the board scrolls horizontally rather than compressing columns below a readable width on desktop.
-- [ ] A board with 200 tasks renders in under 200 ms and updates without visible lag; the column is virtualised or paged if it does not.
-- [ ] Board state is tested against fixtures for every state in ticket 012's union, so an unmapped state is caught here rather than in production.
-- [ ] While the socket is disconnected, the board shows the disconnected state from ticket 022 rather than presenting stale data as current.
+- [x] The four columns are exactly Draft, To do, In progress, Done, in that order.
+- [x] A task moved by an agent relocates to the correct column within one second of the event, without a full page refetch.
+- [x] Applying an event for a task not currently loaded triggers a targeted fetch rather than a full board reload.
+- [x] Out-of-order events do not regress state: an older event arriving after a newer one for the same task is discarded, asserted by test.
+- [ ] Scroll position and any open interaction survive a live update. **NOT DIRECTLY VERIFIED.**
+      jsdom does not lay out or scroll, so no test here can assert it. What *is* enforced: cards
+      are keyed by task id and a live update replaces one entry in a Map rather than reloading
+      the board, so React reconciles in place and the scroll container is never remounted — a
+      test asserts the targeted fetch happens and `load` is called exactly once. The remaining
+      claim needs a real browser; belongs with 030.
+- [x] A column with no tasks renders a meaningful empty state, not blank space; the Draft column's empty state says how a batch gets created.
+- [x] The Done column groups its 7-day window under day headers — Today, Yesterday, then dates — newest first.
+- [x] Below those, "+N earlier" applies a state filter on the existing filter bar rather than opening a separate view. A test asserts the filter is applied and is clearable like any other.
+- [ ] Columns render at 400 px by stacking; the board scrolls horizontally on desktop. **NOT
+      VERIFIED** — same reason: jsdom has no layout engine. The CSS does it (`grid-auto-flow`
+      switches to `row` under 720 px, `overflow-x: auto` with a `--column-min-width` floor above
+      it), but that is an argument, not evidence. Belongs with 030.
+- [x] A board with 200 tasks renders in under 200 ms and updates without visible lag; the column is virtualised or paged if it does not.
+- [x] Board state is tested against fixtures for every state in ticket 012's union, so an unmapped state is caught here rather than in production.
+- [x] While the socket is disconnected, the board shows the disconnected state from ticket 022 rather than presenting stale data as current.
+
+## Decided during implementation
+
+- **Reconciliation fetches the task rather than patching the card from the event payload.** An
+  event says *something happened to this task*; it is not a complete row, and payload shapes
+  differ per type. Patching from a partial payload makes every new event type a chance to write a
+  card that is subtly wrong. One fetch per changed task gives one code path and one source of
+  truth, at the cost of a round trip — the right trade on a board where a handful of tasks change
+  at a time, and never a full board reload.
+
+- **The hook reacts to any event whose payload names a `task_id`, not to a named event type.**
+  Structural rather than a list, so an event type added later is picked up without editing this
+  file. It also handles `TasksUnblocked`, which carries a list rather than a single id.
+
+- **Injected functions are held in a ref and kept out of every dependency array.** Found by a test
+  hanging: a caller writing `useBoard({ filters: { projectId } })` — the obvious way to call it —
+  creates a new identity each render, and with that in the deps the effect re-runs, setState
+  re-renders, and the hook loops forever. Keying only on a serialised `filterKey` makes the hook
+  safe to call normally. This was a real defect, not a test artifact.
+
+## ⚠️ Blocking gap for this ticket's headline criterion
+
+**`transition()` emits no event.** Nothing in the system announces that a task changed state: 013
+emits `TaskCreated`, 014 `TasksUnblocked`, 015 `FileLocksSwept`, and that is the entire list.
+The criterion "a task moved by an agent relocates within one second" is therefore implemented and
+tested against a synthetic event, but **will not fire in production** until some ticket emits on
+transition.
+
+The board needs no change when it does — it already reconciles on any `task_id` — so the fix is
+one `recordSystemEvent` call in `states.ts` (012's file) or in `claim`/`complete` (017's). Flagged
+rather than fixed here, since neither file is this ticket's.
 
 ## Open questions
 

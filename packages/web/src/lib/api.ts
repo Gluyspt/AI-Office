@@ -12,7 +12,12 @@
 // silent downgrade is worse than a visible connection error. In dev the
 // browser talks to Vite's proxy on the same origin, which forwards to the
 // server's https listener (see vite.config.ts).
-import type { TaskRecord, TaskState, TaskStateChange } from "@office/shared/tasks";
+import type {
+  TaskBoardColumn,
+  TaskRecord,
+  TaskState,
+  TaskStateChange,
+} from "@office/shared/tasks";
 import type { TaskId } from "@office/shared/ids";
 
 /** Same-origin by default: Vite proxies /api to the event server in dev, and
@@ -99,12 +104,15 @@ export function listEvents(params: {
  * appearing there. */
 export interface BoardCard {
   readonly task: TaskRecord;
-  readonly column: string;
+  /** The union, not a bare string: the column a card belongs in is decided
+   * once by TASK_BOARD_COLUMN_OF, and typing it loosely here would let a
+   * typo compile. */
+  readonly column: TaskBoardColumn;
   readonly chip: TaskState;
 }
 
 export interface BoardColumn {
-  readonly column: string;
+  readonly column: TaskBoardColumn;
   readonly cards: readonly BoardCard[];
   readonly earlierCount: number;
 }

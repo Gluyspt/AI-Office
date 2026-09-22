@@ -1,0 +1,147 @@
+/* Board layout. Every value is a token from global.css — a hex code or a
+ * raw pixel gap appearing here would be a bug in this feature, not a local
+ * decision. */
+
+.board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(var(--column-min-width), 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  /* Scroll horizontally rather than compressing columns below a readable
+   * width. A board that squeezes four columns into 900px is a board where
+   * every card title is truncated. */
+  overflow-x: auto;
+  padding-bottom: var(--space-3);
+}
+
+/* While the socket is down the board is dimmed and marked, so it cannot
+ * present stale data as current. 022's status strip says the same thing
+ * page-wide; these two must never disagree. */
+.board[data-stale="true"] {
+  opacity: 0.65;
+  filter: saturate(0.7);
+}
+
+.board[data-stale="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  min-height: 160px;
+  max-height: calc(100vh - var(--header-height) - var(--space-7));
+}
+
+.column__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3) var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.column__title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin: 0;
+}
+
+.column__count {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  background: var(--surface-raised);
+  border-radius: 999px;
+  padding: 0 var(--space-2);
+  min-width: 22px;
+  text-align: center;
+}
+
+.column__slot {
+  margin-left: auto;
+}
+
+.column__scroll {
+  overflow-y: auto;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.column__card {
+  /* The card itself is ticket 024's. This is only its slot. */
+  display: block;
+}
+
+.column__empty {
+  padding: var(--space-4) var(--space-3);
+  color: var(--text-muted);
+}
+
+.column__empty-title {
+  margin: 0 0 var(--space-2);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.column__empty-detail {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.column__day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.column__day-label {
+  position: sticky;
+  top: 0;
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-sunken);
+  padding: var(--space-1) 0;
+}
+
+.column__earlier {
+  margin-top: var(--space-3);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font: inherit;
+  padding: var(--space-2);
+  cursor: pointer;
+}
+
+.column__earlier:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+/* Mobile: stack. The design's goal is that the board is reachable from a
+ * phone, which means one readable column at a time rather than four
+ * unreadable ones side by side. */
+@media (max-width: 720px) {
+  .board {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    overflow-x: visible;
+  }
+
+  .column {
+    max-height: none;
+  }
+}
