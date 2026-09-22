@@ -232,3 +232,116 @@ export function loadWsConfig(env: NodeJS.ProcessEnv = process.env): WsConfig {
   finish(reader);
   return { heartbeatIntervalMs, heartbeatMaxMissedPongs, backpressureLimitBytes };
 }
+
+// --- Ticket 007: tmux adapter ------------------------------------------------
+//
+// Appended under the manifest exception recorded in docs/tasks/README.md
+// ("A later ticket may append a loadXConfig() to config.ts") — 004 owns
+// this file permanently; this section adds nothing to ConfigError, the
+// shared readers, or any loadXConfig() above.
+//
+// TMUX_AGENT_USERS is the security-relevant one and has **no default on
+// purpose**. It is the adapter's allowlist of accounts it may pass to
+// `sudo -u`, and it must mirror `deploy/sudoers.d/office` line for line.
+// The adapter never takes that target from a request: a user-supplied
+// value reaching `sudo -u` is the failure this whole ticket exists to
+// prevent, so the set of legal targets is configuration, and an unknown
+// one is refused before a process is spawned. The design's example
+// accounts (`gluy`, `user2`, `user3`) are placeholders — whether they
+// exist on the target VPS is an open question on ticket 007 — which is a
+// second reason there is nothing safe to default to.
+//
+// TMUX_BIN must match the sudoers rule's path byte for byte: sudo matches
+// the permitted command by literal path, so `/usr/bin/tmux` and
+// `/bin/tmux` are different grants even when they are the same binary.
+//
+// The three timeouts and the geometry all have defaults, and all of them
+// are *chosen*, not measured — see the comment on each. Nothing in
+// docs/spikes/002-tmux-tui-control.md measures a tmux command's own
+// latency under sudo, because that spike ran with no sudo in the path at
+// all (§7, DEFERRED). The VPS re-measurement is the ticket criterion that
+// replaces these.
+export interface TmuxConfig {
+  readonly agentUsers: readonly string[];
+  readonly tmuxPath: string;
+  readonly sudoPath: string;
+  readonly commandTimeoutMs: number;
+  readonly readyTimeoutMs: number;
+  readonly maxMessageBytes: number;
+  readonly sessionCols: number;
+  readonly sessionRows: number;
+}
+
+// A tmux client command (`send-keys`, `has-session`, `kill-session`)
+// returns in milliseconds; 10s is a generous ceiling whose only job is to
+// stop a wedged `sudo` from parking a promise forever.
+const DEFAULT_TMUX_COMMAND_TIMEOUT_MS = 10_000;
+// A first launch in an unseen directory has to get past a folder-trust
+// dialog, and a fresh CLAUDE_CONFIG_DIR past onboarding modals
+// (docs/spikes/001-hook-payloads.md §8.1). Spike 002's harness waited 90s
+// and still timed out once for an unrelated reason. 120s is deliberately
+// slack: the cost of waiting is a slow spawn, the cost of giving up early
+// is a brief typed into a modal.
+const DEFAULT_TMUX_READY_TIMEOUT_MS = 120_000;
+// Linux MAX_ARG_STRLEN — a kernel ceiling, NOT a measurement of what the
+// TUI accepts. See EXECVE_ARG_BYTE_LIMIT in orchestrator/shell-quote.ts
+// for why the real limit is still unknown and why this is configurable.
+const DEFAULT_TMUX_MAX_MESSAGE_BYTES = 131_072;
+// Matches the geometry spike 002's harness drove the TUI at. Pane width
+// changes how Claude Code wraps its own output, and the readiness check
+// reads the pane, so this is not a free parameter.
+const DEFAULT_TMUX_SESSION_COLS = 200;
+const DEFAULT_TMUX_SESSION_ROWS = 50;
+
+// POSIX-portable account name. Defence in depth only: the allowlist is the
+// actual control, and this rejects a config entry that could never be a
+// real account before it can become an argv element.
+const POSIX_USERNAME_RE = /^[a-z_][a-z0-9_-]{0,31}\$?$/;
+
+export function loadTmuxConfig(env: NodeJS.ProcessEnv = process.env): TmuxConfig {
+  const reader: Reader = { env, problems: [] };
+  const usersRaw = requiredString(reader, "TMUX_AGENT_USERS");
+  const agentUsers = usersRaw
+    .split(",")
+    .map((user) => user.trim())
+    .filter((user) => user.length > 0);
+  if (usersRaw !== "" && agentUsers.length === 0) {
+    reader.problems.push("TMUX_AGENT_USERS must contain at least one account name");
+  }
+  for (const user of agentUsers) {
+    if (!POSIX_USERNAME_RE.test(user)) {
+      reader.problems.push(`TMUX_AGENT_USERS contains an invalid account name: ${JSON.stringify(user)}`);
+    }
+    if (user === "root") {
+      reader.problems.push("TMUX_AGENT_USERS must not contain root — the orchestrator never runs agents as root");
+    }
+  }
+  const tmuxPath = readString(reader, "TMUX_BIN") ?? "/usr/bin/tmux";
+  const sudoPath = readString(reader, "SUDO_BIN") ?? "/usr/bin/sudo";
+  const commandTimeoutMs = optionalInt(
+    reader,
+    "TMUX_COMMAND_TIMEOUT_MS",
+    DEFAULT_TMUX_COMMAND_TIMEOUT_MS,
+    1,
+  );
+  const readyTimeoutMs = optionalInt(reader, "TMUX_READY_TIMEOUT_MS", DEFAULT_TMUX_READY_TIMEOUT_MS, 1);
+  const maxMessageBytes = optionalInt(
+    reader,
+    "TMUX_MAX_MESSAGE_BYTES",
+    DEFAULT_TMUX_MAX_MESSAGE_BYTES,
+    1,
+  );
+  const sessionCols = optionalInt(reader, "TMUX_SESSION_COLS", DEFAULT_TMUX_SESSION_COLS, 20);
+  const sessionRows = optionalInt(reader, "TMUX_SESSION_ROWS", DEFAULT_TMUX_SESSION_ROWS, 5);
+  finish(reader);
+  return {
+    agentUsers,
+    tmuxPath,
+    sudoPath,
+    commandTimeoutMs,
+    readyTimeoutMs,
+    maxMessageBytes,
+    sessionCols,
+    sessionRows,
+  };
+}
