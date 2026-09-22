@@ -269,7 +269,13 @@ afterAll(async () => {
 });
 
 describe("transition() against the database", () => {
-  it("applies every legal edge in the table for real", async () => {
+  // 30s, not the 5s default. This walks every edge in TASK_TRANSITIONS with
+  // a real transaction each — ~1.2s on an idle database, but vitest runs
+  // test files in parallel and tickets 013 and 015 added two more
+  // database-heavy suites, which is enough contention to push a legitimately
+  // slow test past 5s. Raised here rather than globally so the default keeps
+  // catching tests that are slow by accident.
+  it("applies every legal edge in the table for real", { timeout: 30_000 }, async () => {
     for (const rule of TASK_TRANSITIONS) {
       const taskId = await makeTask();
       if (rule.from === "paused") {

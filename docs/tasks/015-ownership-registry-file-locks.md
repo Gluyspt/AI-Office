@@ -62,16 +62,34 @@ Source: `docs/spikes/001-hook-payloads.md`.
 
 ## Acceptance criteria
 
-- [ ] Acquiring a scope that overlaps an active lock fails and names the conflicting task; acquiring a disjoint scope succeeds.
-- [ ] Two globs whose disjointness cannot be proven are reported as conflicting, and the refusal says the verdict was conservative rather than certain.
-- [ ] Overlap is tested as a table: identical paths, one path inside the other's directory, sibling paths, a glob covering a literal, two overlapping globs, and the same file reached by two different relative spellings — all with the expected verdict.
-- [ ] Acquisition of a multi-file scope is all-or-nothing: a scope where one of five files conflicts acquires none of them.
-- [ ] Two concurrent acquisitions of overlapping scopes: exactly one succeeds. Asserted with a real concurrent test against the database, not a mocked one.
-- [ ] `releaseBySession` releases every lock held by a session — the SessionEnd path.
-- [ ] A heartbeat extends `expires_at`; a lock past `expires_at` is reclaimable, and the sweeper releases it and emits an event so the reclaim is visible rather than silent.
-- [ ] Locks marked `paused` are exempt from TTL expiry and are not reclaimable, per the design's pause behaviour.
-- [ ] Releasing an already-released lock is idempotent.
-- [ ] A lock whose task no longer exists is reported by the sweeper rather than left forever.
+- [x] Acquiring a scope that overlaps an active lock fails and names the conflicting task; acquiring a disjoint scope succeeds.
+- [x] Two globs whose disjointness cannot be proven are reported as conflicting, and the refusal says the verdict was conservative rather than certain.
+- [x] Overlap is tested as a table: identical paths, one path inside the other's directory, sibling paths, a glob covering a literal, two overlapping globs, and the same file reached by two different relative spellings — all with the expected verdict.
+- [x] Acquisition of a multi-file scope is all-or-nothing: a scope where one of five files conflicts acquires none of them.
+- [x] Two concurrent acquisitions of overlapping scopes: exactly one succeeds. Asserted with a real concurrent test against the database, not a mocked one.
+- [x] `releaseBySession` releases every lock held by a session — the SessionEnd path.
+- [x] A heartbeat extends `expires_at`; a lock past `expires_at` is reclaimable, and the sweeper releases it and emits an event so the reclaim is visible rather than silent.
+- [x] Locks marked `paused` are exempt from TTL expiry and are not reclaimable, per the design's pause behaviour.
+- [x] Releasing an already-released lock is idempotent.
+- [x] A lock whose task no longer exists is reported by the sweeper rather than left forever.
+
+## Decided during implementation
+
+- **Glob literal prefixes are compared as STRING prefixes, not path prefixes.** `src/a*.ts` and
+  `src/ab*.ts` have literal prefixes `src/a` and `src/ab`, which are not in a path-segment
+  relationship — yet both patterns match `src/ab.ts`, because a `*` continues *within* a segment.
+  Comparing on segment boundaries declares that pair disjoint, which is the false-clearance
+  direction, the one that costs a git conflict. String prefixing is strictly more conservative, so
+  it can only ever produce extra refusals. Caught by the overlap table, which is why that table is
+  written out case by case rather than generated.
+
+- **Acquisition reclaims the project's expired locks before checking conflicts.** Not an
+  optimisation — a correctness requirement. The partial unique index keys on `released_at is null`
+  alone, while the application treats an expired lock as free, and a partial index *cannot* say
+  "unexpired" because its predicate must be IMMUTABLE and `now()` is not. Without the reclaim the
+  two definitions disagree and acquiring a crashed agent's pattern fails on the index instead of
+  succeeding. It happens under the per-project advisory lock, and emits `FileLocksSwept` with
+  `trigger: "acquire"` so a reclaim is as visible as the sweeper's.
 
 ## Open questions
 

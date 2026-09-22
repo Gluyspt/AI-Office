@@ -350,3 +350,35 @@ export function loadTmuxConfig(env: NodeJS.ProcessEnv = process.env): TmuxConfig
     sessionRows,
   };
 }
+
+// --- File-scope locks (ticket 015, features/locks/registry.ts) ----------------
+//
+// Appended as a self-contained loadXConfig() section, per the manifest
+// exception in docs/tasks/README.md: ticket 004 owns this file but cannot
+// invent a validation shape for a ticket that did not exist when it
+// shipped. Editing an existing section, the shared readers or ConfigError
+// still belongs to 004.
+
+export interface LocksConfig {
+  /** How long an acquired file lock survives without a heartbeat. */
+  readonly ttlSeconds: number;
+}
+
+/**
+ * LOCK_TTL_SECONDS is **required with no default**, deliberately.
+ *
+ * The TTL is one of the design's own open questions, and ticket 015's
+ * ticket says not to let it default to something comfortable: SessionEnd is
+ * the path that normally releases a lock, but whether `tmux kill-session`
+ * fires SessionEnd through `sudo -u` is still unmeasured on the target
+ * host. If it does not, this value stops being a backstop and becomes the
+ * primary release path — and a number nobody chose would then decide how
+ * long a dead agent keeps its files. Refusing to start is the honest
+ * behaviour.
+ */
+export function loadLocksConfig(env: NodeJS.ProcessEnv = process.env): LocksConfig {
+  const reader: Reader = { env, problems: [] };
+  const ttlSeconds = requiredInt(reader, "LOCK_TTL_SECONDS", 1);
+  finish(reader);
+  return { ttlSeconds };
+}
