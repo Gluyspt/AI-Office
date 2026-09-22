@@ -357,6 +357,11 @@ None of these are visible from Windows, and each produces a session that `has-se
    (`Claude configuration file not found at: <dir>/.claude.json`, then the welcome screen).
    Ticket 009 must place `.claude.json` inside the config dir it provisions, not rely on
    `$HOME/.claude.json`. Separate Linux accounts already isolate logins through `$HOME`.
+
+   **Settled since:** ticket 009 decided **not to use `CLAUDE_CONFIG_DIR` at all** — one config
+   directory per Linux user, roles by `--agent`. This finding therefore describes a trap the
+   system now avoids rather than a requirement it must meet, and it takes the design's "two logins
+   at once" question (line 724) off the critical path.
 3. **The folder-trust dialog gates readiness, and Enter does not clear it.** An untrusted working
    directory parks the agent on the dialog indefinitely — observed alive at 80 s. The run that
    succeeded used a directory already in the account's trust list. Ticket 009 must pre-trust the

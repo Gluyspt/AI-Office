@@ -31,7 +31,7 @@ dropping a file into `config/hooks/fragments/`, never by editing a shared settin
 - `agents/dev-lead.md` — role definition: plans, splits, assigns, starts agents, owns merges for its department
 - `config/hooks/base.settings.json` — the eight HTTP hook entries from the design
 - `config/hooks/fragments/.gitkeep` — the fragment directory, with the convention documented in the file
-- `packages/server/src/features/orchestrator/provision.ts` — renders `base.settings.json` merged with every fragment into a user's `CLAUDE_CONFIG_DIR`, and installs the agent definitions
+- `packages/server/src/features/orchestrator/provision.ts` — renders `base.settings.json` merged with every fragment into the target user's own config directory (`~/.claude`), pre-trusts the project paths in their `.claude.json`, and installs the agent definitions
 - `scripts/provision-user.sh` — one-shot host script that runs provisioning for a given Linux user
 
 ### Files modified
@@ -40,7 +40,7 @@ None.
 
 ## Acceptance criteria
 
-- [ ] Running `scripts/provision-user.sh gluy` writes a settings file into that user's `CLAUDE_CONFIG_DIR` containing all eight hook entries, and installs both agent definitions where `--agent` finds them.
+- [ ] Running `scripts/provision-user.sh gluy` writes a settings file into that user's own `~/.claude` containing all eight hook entries, and installs both agent definitions where `--agent` finds them.
 - [ ] Re-running is idempotent: byte-identical output, and any fragment already present is not duplicated.
 - [ ] Adding a file to `config/hooks/fragments/` and re-provisioning merges its hook entries in, with no edit to `base.settings.json` — verified with a temporary fragment in a test.
 - [ ] Two fragments registering handlers for the same hook event both survive the merge (array concatenation, not replacement).
@@ -81,21 +81,51 @@ None.
 
 ## Decided
 
-- **A provisioned `CLAUDE_CONFIG_DIR` must contain its own `.claude.json`.** Setting
-  `CLAUDE_CONFIG_DIR` relocates the config file as well as the credential: Claude Code then looks
-  for `<dir>/.claude.json` and ignores `$HOME/.claude.json`. Measured 2026-09-22 — pointing it at a
-  directory holding only credentials produced
-  `Claude configuration file not found at: <dir>/.claude.json` followed by the **welcome/onboarding
-  screen**, with the session alive and the composer never reached. Provisioning writes that file;
-  it does not inherit one.
+- **One config directory per Linux user. `CLAUDE_CONFIG_DIR` is not used.** Each team member has
+  their own Linux account, so `$HOME` already separates their logins and their Claude state —
+  `~/.claude` per person, nothing to point anywhere. Roles differ by `--agent <role>` against a
+  single merged `settings.json` for that user, not by a config directory per role.
 
-- **Provisioning pre-trusts the project directory.** The folder-trust dialog gates readiness and
-  **Enter does not clear it** — an agent started in an untrusted directory sat on the dialog
-  indefinitely (alive at 80 s). Trust is recorded per directory in `.claude.json`'s `projects` map,
-  so the provisioning step that writes that file adds the project path. Relying on the orchestrator
-  to answer the dialog is not a substitute: it is one more TUI string that changes between builds.
+  This is the arrangement **proven working on 2026-09-22**: an agent started through
+  `sudo -n -u gluy` with `CLAUDE_CONFIG_DIR` unset reached the composer and took delivery of all
+  nine character classes. Every failure that day came from *setting* the variable.
 
-  Source for both: `docs/spikes/002-tmux-tui-control.md` §4, "Three spawn-path requirements".
+  What it buys, beyond simplicity: a per-role config directory is a **fresh** config directory, and
+  a fresh one triggers both the onboarding modal and the folder-trust dialog — the two blockers
+  spike 002 §625 flags as hanging a newly provisioned user indefinitely. Per-user provisioning
+  writes into a directory that has already been through onboarding once, interactively, by its
+  owner.
+
+  It also takes the design's open question off the critical path. "Does `CLAUDE_CONFIG_DIR` keep
+  two logins authenticated at once?" (design line 724) only matters if one Linux user needs several
+  logins. Under this decision none does, so the question is **deferred, not answered** — and
+  nothing in steps 1–3 waits on it. The cost is that all of one person's roles share one hook set;
+  since fragments are merged anyway, that is sufficient.
+
+  Superseding note: the design's spawn example (line 121) writes
+  `CLAUDE_CONFIG_DIR=/home/gluy/.claude claude --agent dev-lead`, which is a no-op — that path is
+  already `gluy`'s default when the process runs as `gluy`. Ticket 007's adapter omits it.
+
+- **Provisioning pre-trusts the project directories.** This survives the decision above, because a
+  *newly created Linux user* has an empty `~/.claude` and therefore trusts nothing. The
+  folder-trust dialog gates readiness and **Enter does not clear it** — an agent started in an
+  untrusted directory sat on the dialog indefinitely, alive at 80 s. Trust is recorded per
+  directory in `.claude.json`'s `projects` map, so provisioning adds each project path there.
+  Relying on the orchestrator to answer the dialog is not a substitute: it is one more TUI string
+  that changes between builds.
+
+- **Each new team member logs in once, interactively, as themselves.** Provisioning cannot create a
+  login — `/login` is a browser flow. The sequence is: create the Linux user, that person runs
+  `claude` once and logs in, then `scripts/provision-user.sh <user>` writes hooks, agents and
+  trust entries into the `~/.claude` they just created.
+
+  Source: `docs/spikes/002-tmux-tui-control.md` §4, "Three spawn-path requirements"; spike 001 §8.5.
+
+- **If a config directory is ever provisioned anyway**, it must contain its own `.claude.json`.
+  `CLAUDE_CONFIG_DIR` relocates the config file as well as the credential, so a directory holding
+  only credentials yields `Claude configuration file not found at: <dir>/.claude.json` and then the
+  onboarding screen — session alive, composer never reached. Recorded because the failure is silent
+  from the orchestrator's side.
 
 
 - **Every hook URL this ticket emits is `https`**, per the system-wide decision (see the ticket index).

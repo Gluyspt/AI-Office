@@ -56,6 +56,13 @@ None.
 
 ## Decided
 
+- **`newSession` does not set `CLAUDE_CONFIG_DIR`.** Each agent runs as its own Linux user, so
+  `$HOME` already selects that user's `~/.claude` — the design's example (line 121) sets it to
+  `/home/gluy/.claude` while running as `gluy`, which is that user's default anyway. Setting it was
+  the cause of the onboarding failure on 2026-09-22; unset, the same spawn reached the composer.
+  The adapter still *accepts* an override for a caller that needs one, but passes nothing by
+  default. Decision and rationale live in ticket 009.
+
 - **`newSession` names the Claude binary by absolute path, never bare `claude`.** Measured
   2026-09-22 on Ubuntu 24.04: tmux runs its command through a **non-interactive** shell, and the
   stock `.bashrc` returns on line 6 when not interactive, so `~/.local/bin` never joins `PATH`.
