@@ -1,0 +1,75 @@
+# /etc/sudoers.d/office — scoped sudo for the AI Agent Office orchestrator.
+#
+# THIS FILE IS A TEMPLATE AND MUST BE REGENERATED PER HOST.
+# The account names below are the ones the design's example uses. Whether
+# they exist on the target VPS, and which department each owns, is an open
+# question on ticket 007 and on the design itself ("Who owns which
+# department by default?"). Do not install this file unmodified onto a host
+# whose accounts you have not checked with `id <user>`.
+#
+# What this grants, in one sentence: the unprivileged `office` account —
+# which the orchestrator runs as — may run /usr/bin/tmux, and only
+# /usr/bin/tmux, as each agent account, without a password.
+#
+# ---------------------------------------------------------------------------
+# Install and verify (run these on the VPS, as root):
+#
+#   visudo -c -f ./office                 # syntax check BEFORE installing
+#   install -o root -g root -m 0440 ./office /etc/sudoers.d/office
+#   visudo -c                             # re-check the whole sudoers set
+#   sudo -u office sudo -n -l             # what office may actually do
+#   sudo -u office sudo -n -u gluy /usr/bin/tmux -V   # must print a version
+#
+# `visudo -c -f` is the acceptance check and it is deliberately the first
+# step: a sudoers file with a syntax error can lock every user out of sudo,
+# and /etc/sudoers.d files are parsed as part of the whole set. Mode 0440
+# and root ownership are not decoration — sudo refuses to read a file in
+# sudoers.d that is group- or world-writable, and does so silently enough
+# that the symptom looks like "the rule does nothing".
+#
+# ---------------------------------------------------------------------------
+# Notes that are decisions, not commentary:
+#
+# * The path must match byte for byte what the orchestrator executes. sudo
+#   matches the permitted command as a literal path, so /usr/bin/tmux and
+#   /bin/tmux are two different grants even on a host where one is a symlink
+#   to the other. `TMUX_BIN` in .env must equal the path written here; check
+#   with `command -v tmux` on the target host.
+#
+# * The orchestrator always calls sudo with -n (non-interactive). A rule
+#   that still demands a password therefore fails immediately and visibly
+#   instead of blocking on a prompt no human will ever see. Keep NOPASSWD,
+#   or every spawn fails with "a password is required".
+#
+# * No env_keep, and none is needed. Environment for an agent session is set
+#   by `tmux new-session -e KEY=VALUE`, not by exporting it through sudo, so
+#   sudo's env_reset default stays untouched and CLAUDE_CONFIG_DIR /
+#   NODE_EXTRA_CA_CERTS still reach the pane process.
+#
+# * DELIBERATE, NOT AN OVERSIGHT: granting /usr/bin/tmux in full lets
+#   `office` run `tmux new-session` with an ARBITRARY command as any of the
+#   accounts below. This is not a sandbox; it is a grant of shell-equivalent
+#   access to those three accounts, and the design accepts it. Narrowing it
+#   would require a wrapper script that fixes the command line and grants
+#   only the wrapper — worth doing when the orchestrator stops being trusted
+#   code, and a change that belongs with a ticket that can test it.
+#
+# * The orchestrator never runs as root and this file never grants (root).
+#   The adapter refuses to start if its own uid is 0, so a misconfigured
+#   service unit fails loudly instead of quietly gaining the world.
+#
+# * Anything added here must also be added to TMUX_AGENT_USERS in .env. The
+#   adapter checks that allowlist before spawning and will refuse an account
+#   this file grants but the config does not know about. Two lists is
+#   deliberate: sudo is the kernel-side boundary, TMUX_AGENT_USERS is the
+#   application-side one, and neither is trusted to be the only check.
+# ---------------------------------------------------------------------------
+
+# Dev department account. The orchestrator drives this user's agent desks.
+office ALL=(gluy)  NOPASSWD: /usr/bin/tmux
+
+# Second team account (placeholder name from the design's example).
+office ALL=(user2) NOPASSWD: /usr/bin/tmux
+
+# Third team account (placeholder name from the design's example).
+office ALL=(user3) NOPASSWD: /usr/bin/tmux
