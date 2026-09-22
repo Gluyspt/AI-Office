@@ -54,7 +54,11 @@ None.
 - [x] Two overlays coexist without stacking conflicts, and each controls its own open/closed state.
 - [x] Nav links to `/tasks` and `/control` are plain hrefs, so the pages can land in later tickets without this file changing.
 - [x] The router resolves a parameterised route (`/tasks/:id`) without this file changing, verified with a temporary route file — ticket 031 depends on it.
-- [x] The shell renders correctly at 1280 px and at 400 px width.
+- [ ] The shell renders correctly at 1280 px and at 400 px width. **NOT VERIFIED.** jsdom has no
+      layout engine, so no test here can assert it. The CSS is written for it — the header wraps,
+      `--space` padding tightens under 600 px, and nothing has a min-width wider than a phone —
+      but that is an argument, not evidence. Needs a real browser; belongs with 030's acceptance
+      pass, which opens the app for real.
 - [x] Colour and spacing are defined once as tokens in `global.css`; later UI tickets consume them rather than hardcoding values.
 
 ## Decided
@@ -93,6 +97,17 @@ None.
   nor `ws.ts` falls back to plaintext anywhere.
 
 ### Verification, 2026-09-23
+
+**The overlay convention was verified by doing it, not asserted.** Two throwaway features were
+created under `src/features/`, and both rendered through the glob with no edit to `__root.tsx` or
+`overlays.tsx`; each owned its own open/closed state (opening one left the other closed) and each
+got its own slot. Then both were deleted — the same method ticket 001's workspace-glob criterion
+used. 026 and 029 are the permanent proof.
+
+**The shared-types criterion is a type-level test** (`api.types.test.ts`): assignability asserted
+in both directions, plus `@ts-expect-error` on a state outside the union and on an incomplete
+`TaskRecord`. `@ts-expect-error` is the load-bearing half — it fails if the mismatch it flags ever
+becomes valid, so the file catches silent convergence as well as drift.
 
 `pnpm typecheck` clean across all three packages. `vite build` produces a bundle (34 modules).
 Suite: **348 passed, 1 skipped, 18 files**. The criterion "`pnpm dev` serves the app with `/api`

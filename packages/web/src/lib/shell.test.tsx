@@ -1,11 +1,16 @@
 // The shell's three conventions, each asserted the way a later ticket will
 // actually use it: the status strip driven by records, the overlay glob,
 // and file-based routing including a parameterised route.
-import { describe, expect, it } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import { render, screen, act , cleanup } from "@testing-library/react";
 import { useHealthConditions, SystemStatus, type HealthCondition } from "./SystemStatus.tsx";
 import { collectOverlays, OverlayHost } from "./overlays.tsx";
 import { collectRoutes, matchRoute, patternFromFilename } from "../main.tsx";
+
+// vite.config.ts sets `globals: false`, so @testing-library/react does not
+// install its own afterEach cleanup — without this, every render in this
+// file stacks into the same document and getBy* starts finding duplicates.
+afterEach(cleanup);
 
 describe("SystemStatus", () => {
   function Harness({ onReady }: { readonly onReady: (api: ReturnType<typeof useHealthConditions>) => void }) {
@@ -59,10 +64,12 @@ describe("SystemStatus", () => {
 
 describe("overlay convention", () => {
   it("collects overlays from the features glob without the shell knowing them", () => {
-    // No features exist yet, so the honest assertion is that the host
-    // mounts and reports a count. The "add a file and it renders" half is
-    // proved by 026 and 029 landing without touching this file — and by
-    // the count below changing when they do.
+    // No features ship yet, so this asserts the host mounts and reports
+    // whatever the glob found. The "add a file and it renders" half was
+    // verified on 2026-09-23 with two throwaway features under
+    // src/features/ — both rendered, each owned its own open state, and
+    // each got its own slot — then deleted. Same method as ticket 001's
+    // workspace-glob criterion. 026 and 029 are the permanent proof.
     const overlays = collectOverlays();
     render(<OverlayHost />);
     const host = document.querySelector(".overlay-host");
