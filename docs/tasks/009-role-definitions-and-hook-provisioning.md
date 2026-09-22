@@ -81,6 +81,23 @@ None.
 
 ## Decided
 
+- **A provisioned `CLAUDE_CONFIG_DIR` must contain its own `.claude.json`.** Setting
+  `CLAUDE_CONFIG_DIR` relocates the config file as well as the credential: Claude Code then looks
+  for `<dir>/.claude.json` and ignores `$HOME/.claude.json`. Measured 2026-09-22 — pointing it at a
+  directory holding only credentials produced
+  `Claude configuration file not found at: <dir>/.claude.json` followed by the **welcome/onboarding
+  screen**, with the session alive and the composer never reached. Provisioning writes that file;
+  it does not inherit one.
+
+- **Provisioning pre-trusts the project directory.** The folder-trust dialog gates readiness and
+  **Enter does not clear it** — an agent started in an untrusted directory sat on the dialog
+  indefinitely (alive at 80 s). Trust is recorded per directory in `.claude.json`'s `projects` map,
+  so the provisioning step that writes that file adds the project path. Relying on the orchestrator
+  to answer the dialog is not a substitute: it is one more TUI string that changes between builds.
+
+  Source for both: `docs/spikes/002-tmux-tui-control.md` §4, "Three spawn-path requirements".
+
+
 - **Every hook URL this ticket emits is `https`**, per the system-wide decision (see the ticket index).
   `"type": "http"` remains the config keyword; only the scheme changes.
 - **Provisioning must also make the agent trust the certificate.** If the event server uses a

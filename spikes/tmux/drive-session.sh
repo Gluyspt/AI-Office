@@ -1113,7 +1113,7 @@ cmd_sudo_parity() {
     plan "  2. sudo -n -u \$SPIKE_USER $SPIKE_TMUX -V            -> is /usr/bin/tmux the permitted path"
     plan "  3. sudo -n -u \$SPIKE_USER $SPIKE_TMUX display-message -p '#{socket_path}'"
     plan "     -> confirms a per-user tmux server: office's own sessions are invisible to the agent user"
-    plan "  4. a session running 'sh -c \"id -un; printenv HOME; printenv CLAUDE_CONFIG_DIR; pwd\"'"
+    plan "  4. a session running 'sh -c \"id -un; printenv HOME; printenv CLAUDE_CONFIG_DIR || echo (unset); pwd\"'"
     plan "     compared against getent passwd \$SPIKE_USER  -> does \$HOME follow the target user"
     plan "  5. the same with -e CLAUDE_CONFIG_DIR=...  vs inline 'CLAUDE_CONFIG_DIR=... claude'"
     plan "     -> which of the two forms actually reaches the process (the design uses the inline form)"
@@ -1150,7 +1150,7 @@ cmd_sudo_parity() {
   register_session "$s"
   sudo -n -u "$SPIKE_USER" "$SPIKE_TMUX" new-session -d -s "$s" -x "$SPIKE_COLS" -y "$SPIKE_ROWS" \
     ${SPIKE_CONFIG_DIR:+-e "CLAUDE_CONFIG_DIR=$SPIKE_CONFIG_DIR"} \
-    "sh -c 'id -un; printenv HOME; printenv CLAUDE_CONFIG_DIR; pwd; sleep 30'" || true
+    "sh -c 'id -un; printenv HOME; printenv CLAUDE_CONFIG_DIR || echo \"(unset)\"; pwd; sleep 30'" || true
   sleep 2
   out="$(sudo -n -u "$SPIKE_USER" "$SPIKE_TMUX" capture-pane -p -t "$s" 2>/dev/null | grep -v '^$' || true)"
   who="$(printf '%s' "$out" | sed -n '1p')"

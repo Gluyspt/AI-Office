@@ -306,6 +306,75 @@ mechanisms, **36 trials, echo mode**, i.e. what the *agent* received, not what t
 **min 1 342 ms, mean 1 626 ms, max 2 504 ms** (WSL, Sonnet, a one-line echo task — a floor for
 latency, not a model of real turns).
 
+#### Re-run **through `sudo -n -u`** — 2026-09-22, compose mode
+
+> Ubuntu 24.04.4, tmux 3.4, Claude Code 2.1.278, `--model sonnet`, driven by the **`office`**
+> account through `sudo -n -u gluy`, with gluy's real login and the scoped sudoers rule installed.
+> Everything above was measured with `SPIKE_USER` empty — **no sudo in the tmux path**. This is the
+> first run of the matrix over the path the adapter actually uses.
+
+`chars --mode compose` rather than `--mode echo`: it types into the composer and never presses
+Enter, so it spends no tokens. That makes it a **weaker** check than the echo run above — it shows
+what the composer holds, not what the agent received — and a **complementary** one, because it is
+the only one taken through sudo. Read the two together: echo proves the agent gets the bytes,
+compose proves sudo does not mangle them on the way.
+
+**35 of 36 intact.** The one failure is the same mechanism the echo run condemned, failing slightly
+differently:
+
+| Payload | `send-keys` | `send-keys -l` | `load-buffer`+`paste-buffer` | `paste-buffer -p` |
+| --- | --- | --- | --- | --- |
+| all eight non-newline payloads | intact | intact | intact | intact |
+| `line one`⏎`line two` | intact | intact | **VANISHED** | intact |
+
+`newline/buffer` left "nothing in the composer and nothing on screen". Over WSL without sudo the
+same mechanism **split the message into two turns**; through sudo it disappeared outright. Either
+way `paste-buffer` is ruled out for newline-bearing payloads, and **`send-keys -l` — ticket 007's
+chosen mechanism — is intact on all nine payloads through sudo**, which is the result that
+mattered.
+
+**The payload-size question stays open.** Every probe collapsed to a placeholder, exactly as before:
+
+| Size | Mechanism | Outcome |
+| --- | --- | --- |
+| 1 000 / 4 000 / 16 000 / 65 536 chars | `load-buffer`+`paste-buffer` | `[[Pasted text #N]]` in the composer |
+
+Compose mode cannot see past the placeholder — only `--mode echo` can, and that costs tokens per
+trial. So `TMUX_MAX_MESSAGE_BYTES=131072` in `.env.example` is **still** the kernel's
+`MAX_ARG_STRLEN` rather than a measured TUI limit.
+
+#### Three spawn-path requirements this run established
+
+None of these are visible from Windows, and each produces a session that `has-session` reports
+**alive** while the composer never appears — the exact hazard this document warned about.
+
+1. **The spawn must name the binary by absolute path.** tmux runs its command through a
+   non-interactive shell, and Ubuntu's stock `.bashrc` returns on line 6 when not interactive, so
+   `~/.local/bin` never joins `PATH`. Bare `claude` gives a pane that dies instantly with an empty
+   capture. Use `/home/<user>/.local/bin/claude`, resolved per account.
+2. **`CLAUDE_CONFIG_DIR` relocates `.claude.json` as well as the credential.** Pointing it at a
+   directory that has no `.claude.json` sends the agent into **onboarding**, not the composer
+   (`Claude configuration file not found at: <dir>/.claude.json`, then the welcome screen).
+   Ticket 009 must place `.claude.json` inside the config dir it provisions, not rely on
+   `$HOME/.claude.json`. Separate Linux accounts already isolate logins through `$HOME`.
+3. **The folder-trust dialog gates readiness, and Enter does not clear it.** An untrusted working
+   directory parks the agent on the dialog indefinitely — observed alive at 80 s. The run that
+   succeeded used a directory already in the account's trust list. Ticket 009 must pre-trust the
+   project directory during provisioning; ticket 007's readiness check must treat "session exists"
+   and "composer reached" as different questions.
+
+#### Two harness notes from the same run
+
+- **`sudo-parity` row 6 mis-reported `config_dir`.** The probe ran `printenv CLAUDE_CONFIG_DIR`
+  and read line 3 of the pane; with the variable unset `printenv` emits no line, so `pwd` was
+  read into that slot and the row claimed `CLAUDE_CONFIG_DIR='/mnt/d/project/ai_office'`. Fixed —
+  the probe now emits `(unset)` explicitly.
+- **`doctor`'s `project_dir` check runs as the caller, not the agent**, so a project directory
+  under the agent's home reads as `missing` when that home is mode 750 and `office` cannot
+  traverse it — even though the agent starts there perfectly well. Not a bug in production, where
+  `PROJECT_ROOT=/srv/office/projects` is owned by `office`, but worth knowing before trusting the
+  row.
+
 #### The measurement method had to change, and this is itself a finding
 
 **The pane cannot answer this question.** The TUI renders messages as markdown, so the payload
@@ -536,7 +605,7 @@ proceed on a placeholder.** Derived by reading the ticket files, not by memory.
 
 | Ticket | Assumption at risk | What breaks if the real measurement contradicts it | Answered by |
 | --- | --- | --- | --- |
-| ~~**007** tmux adapter~~ **ANSWERED (WSL)** | "Every character class from ticket 003's findings round-trips into the agent's prompt intact, **using the mechanism that spike recorded**" — and `shell-quote.ts` is specified as "the message-delivery encoding **chosen in ticket 003**" | **Closed provisionally.** The mechanism is `send-keys -l -- "$TEXT"` then a separate `send-keys Enter`: 9/9 payloads intact at the agent, verified in the transcript ([§4](#4-do-quotes-backticks-dollars-semicolons-newlines-and-non-ascii-survive-delivery--measured-wsl)). Plain `paste-buffer` is confirmed to **split a newline-bearing message into two turns** at the agent, not just in the composer. Note `shell-quote.ts` is a misnomer — there is no shell in this path and the required escaping is none | `chars --mode echo` — **re-run on the VPS** |
+| ~~**007** tmux adapter~~ **ANSWERED (WSL)** | "Every character class from ticket 003's findings round-trips into the agent's prompt intact, **using the mechanism that spike recorded**" — and `shell-quote.ts` is specified as "the message-delivery encoding **chosen in ticket 003**" | **Closed provisionally.** The mechanism is `send-keys -l -- "$TEXT"` then a separate `send-keys Enter`: 9/9 payloads intact at the agent, verified in the transcript ([§4](#4-do-quotes-backticks-dollars-semicolons-newlines-and-non-ascii-survive-delivery--measured-wsl)). Plain `paste-buffer` is confirmed to **split a newline-bearing message into two turns** at the agent, not just in the composer. Note `shell-quote.ts` is a misnomer — there is no shell in this path and the required escaping is none | `chars --mode echo` — compose mode **re-run through sudo 2026-09-22, 35/36 intact**; echo mode still VPS-only |
 | **007** | "A message longer than the tmux buffer limit is delivered whole or fails loudly — **state the measured limit in a code comment**" | **Still open.** All four sizes (1 000 – 65 536) collapse to a `[Pasted text #N]` placeholder in the composer and were never submitted, so nothing is known about what the agent receives. Now *answerable* by the transcript method §4 uses; skipped this pass to limit token spend | `chars --mode echo`, size rows |
 | **007** **WORSE THAN THOUGHT** | "`newSession` … and `hasSession` reports it within 2 s" | Still wrong, and for a second reason now. `hasSession` was already the wrong signal (a dialog sits behind a live session); this pass also found the *pane* signal moving — `? for shortcuts` is replaced by `⏵⏵ auto mode on (shift+tab to cycle)` whenever a permission mode is active, and the harness declared a perfectly ready session `not_ready` for 90 s because of it. **007's readiness check must key on the composer's structure, not one hint string**, and must treat an unrecognised pane as not-ready | `deliver --state idle` (startup rows), `doctor` |
 | ~~**007**~~ **ANSWERED (WSL)** | "`sendEscape` halts a mid-turn agent and leaves the session alive" | **Closed provisionally: 3/3, ~124 ms, session alive every time**, pane shows an interrupted marker ([§3](#3-does-send-keys-escape-halt-the-turn-without-killing-the-session-and-how-fast--measured-wsl-124-ms)). Interrupt is not Kill on this build | `interrupt` — **re-run on the VPS** |

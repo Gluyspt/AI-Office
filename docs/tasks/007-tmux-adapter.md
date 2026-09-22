@@ -56,6 +56,27 @@ None.
 
 ## Decided
 
+- **`newSession` names the Claude binary by absolute path, never bare `claude`.** Measured
+  2026-09-22 on Ubuntu 24.04: tmux runs its command through a **non-interactive** shell, and the
+  stock `.bashrc` returns on line 6 when not interactive, so `~/.local/bin` never joins `PATH`.
+  Bare `claude` produces a pane that dies instantly with an **empty** capture — indistinguishable
+  from a slow start. The path is per-account (`/home/<user>/.local/bin/claude`), so it is resolved
+  from the session registry's target user, not hardcoded.
+
+- **"Session exists" and "composer reached" are different questions, and the readiness check owns
+  the second.** Three separate conditions were observed leaving a session that `hasSession`
+  reports **alive** while the composer never appears: the binary not found (pane dies), a
+  `CLAUDE_CONFIG_DIR` with no `.claude.json` (agent enters onboarding), and an untrusted working
+  directory (agent parks on the folder-trust dialog — observed still waiting at 80 s). A readiness
+  check that only asks tmux whether the session exists reports all three as healthy. Source:
+  `docs/spikes/002-tmux-tui-control.md` §4.
+
+- **`send-keys -l` is confirmed through `sudo -n -u`.** The character matrix was re-run over the
+  real sudo path on 2026-09-22: all nine payload classes intact via `send-keys -l`. Plain
+  `paste-buffer` lost a newline-bearing payload entirely (it *split* it into two turns over the
+  unwrapped path), so it stays ruled out.
+
+
 - **This ticket owns ticket 003's deferred measurements.** 003 built the harness but deliberately took
   no readings: the only machine available was Windows with a WSL2 Ubuntu, and timings against a WSL2
   kernel, RSS against WSL2 memory accounting, and `sudo -u` on a host where sudo demands a password
