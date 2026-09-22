@@ -1,0 +1,37 @@
+# Run the repo's test suite on Linux, against the dev database.
+#
+#   docker compose -f deploy/dev/compose.yml up -d          # the database first
+#   docker compose -f deploy/linux-check/compose.yml run --rm linux-check
+#
+# Reuses the image from deploy/vps-sim/Dockerfile: the suite then runs on a
+# host provisioned by deploy/host/provision-host.sh, using the TLS material
+# that script generates, so the certs are exercised rather than assumed.
+#
+# Pinned, like the other two — Compose names the project after the directory
+# holding the file otherwise.
+name: ai-office-linux-check
+
+services:
+  linux-check:
+    build:
+      context: ../..
+      dockerfile: deploy/vps-sim/Dockerfile
+    # The dev stack's network, so the database is reachable as `db`.
+    # Going through the host's published port instead fails
+    # authentication under Docker Desktop's host proxy; joining the
+    # network talks to the container directly and sidesteps it.
+    networks: [office]
+    volumes:
+      # Read-only: run.sh copies to a scratch dir before installing, both
+      # because host node_modules is Windows-built and because a check must
+      # not be able to write to the working tree.
+      - ../..:/srv/office/orchestrator:ro
+    command: ["bash", "/srv/office/orchestrator/deploy/linux-check/run.sh"]
+
+networks:
+  office:
+    # Created by deploy/dev/compose.yml, which pins its project to
+    # `ai_office`. Start that stack first or this fails with a missing
+    # network rather than a confusing connection error.
+    name: ai_office_default
+    external: true

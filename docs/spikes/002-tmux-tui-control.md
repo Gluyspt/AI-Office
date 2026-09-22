@@ -470,19 +470,51 @@ between two Claude Code builds a day apart (below) and leaves room for the tooli
 carries. Record in ticket 018's config comment that the value is provisional and that the VPS run
 replaces it.
 
-### 7. Does `sudo -u <user> tmux …` behave identically to running as that user? — **DEFERRED, NOT ATTEMPTED**
+### 7. Does `sudo -u <user> tmux …` behave identically to running as that user? — **MEASURED (container), all seven rows green**
 
 ```sh
-./drive-session.sh sudo-parity
+docker compose -f deploy/vps-sim/compose.yml run --rm vps-sim \
+  ./spikes/tmux/drive-session.sh sudo-parity
 ```
 
-**Still not attempted after the WSL measurement pass, and deliberately so.** `sudo` requires a
-password for the user available here and there is no `office` user and no agent user to become, so
-nothing about this was tested — not even badly. Running it would have produced a row saying
-`skipped`, which is what the harness emits when `SPIKE_USER` is unset; it would not have produced a
-finding. This is the criterion with the least excuse for a guess: `$HOME`, `CLAUDE_CONFIG_DIR`, the
-tmux socket path and cross-user visibility all depend on the real sudoers file, the real accounts
-and the real PAM configuration.
+**Measured 2026-09-22 in `deploy/vps-sim/`** — Debian 12, tmux 3.3a, Claude Code 2.1.278, with the
+real `deploy/host/sudoers.d/office` installed by `deploy/host/provision-host.sh` and the real
+`office` / `gluy` / `user2` / `user3` accounts. This is the one criterion a container answers at
+**full fidelity**: it is user, permission and process semantics, not hardware. The reason it was
+deferred — WSL's `sudo` demands a password and there were no accounts to become — is a property of
+that machine, not of the question, and inside a container we own `/etc/sudoers`.
+
+| # | Row | Outcome | Detail |
+| --: | --- | --- | --- |
+| 1 | `nopasswd` | **ok** | `sudo -n -u gluy /usr/bin/tmux -V` succeeds |
+| 2 | `tmux_path` | **ok** | `tmux 3.3a` at `/usr/bin/tmux`, matching the rule byte for byte |
+| 3 | `socket` | **per_user** | agent `/tmp/tmux-1002/default`, office `/tmp/tmux-1001/default` |
+| 4 | `whoami` | **ok** | pane reports `gluy` |
+| 5 | `home` | **ok** | `HOME=/home/gluy`, matching `getent passwd` |
+| 6 | `config_dir` | **present** | `CLAUDE_CONFIG_DIR` set with `new-session -e` reaches the pane process |
+| 7 | `isolation` | **ok** | the agent user's tmux cannot kill a session owned by the caller |
+
+**Row 3 was re-verified with both servers running**, since the harness reads the socket path from a
+server that may not exist yet and would report two "no such file" paths that merely differ by uid.
+With a live session under each account: the paths differ, and each server sees **only** its own
+session — `office sees: officelive`, `agent sees: agentlive`. Mutual invisibility, not inferred
+from path strings.
+
+So the failure mode this criterion existed to catch is ruled out: the two users do **not** share a
+tmux server, and `$HOME` does follow. Tickets 008 and 015 were both exposed to the other answer.
+
+**What this does not settle.** Everything else in this document was measured with `SPIKE_USER`
+empty — **no `sudo` in the tmux path at all** — and that is still true. Delivery, interrupt, the
+character matrix and `SessionEnd` have never been run *through* `sudo -n -u`, because those
+subcommands drive a live TUI and need an authenticated agent. The accounts and the grant are now
+proven; what travels over them is not.
+
+**A harness bug found while doing this, now fixed** (`spikes/tmux/drive-session.sh`): both the
+`doctor` and `sudo-parity` preconditions probed the grant with `sudo -n -u "$SPIKE_USER" true`. A
+correctly scoped sudoers file **denies** that — the rule permits `/usr/bin/tmux` and nothing else —
+so against a working host the harness reported `sudo unavailable` and skipped every row, pointing
+the operator at the one file that was right. Both sites now probe with `"$SPIKE_TMUX" -V`. On the
+VPS this would have read as "provisioning is broken" and cost a session.
 
 Everything else in this document was measured with `SPIKE_USER` empty, i.e. **with no `sudo` in the
 tmux path at all**. The VPS adapter's every tmux call goes through `sudo -n -u`, so even the rows
@@ -508,7 +540,7 @@ proceed on a placeholder.** Derived by reading the ticket files, not by memory.
 | **007** | "A message longer than the tmux buffer limit is delivered whole or fails loudly — **state the measured limit in a code comment**" | **Still open.** All four sizes (1 000 – 65 536) collapse to a `[Pasted text #N]` placeholder in the composer and were never submitted, so nothing is known about what the agent receives. Now *answerable* by the transcript method §4 uses; skipped this pass to limit token spend | `chars --mode echo`, size rows |
 | **007** **WORSE THAN THOUGHT** | "`newSession` … and `hasSession` reports it within 2 s" | Still wrong, and for a second reason now. `hasSession` was already the wrong signal (a dialog sits behind a live session); this pass also found the *pane* signal moving — `? for shortcuts` is replaced by `⏵⏵ auto mode on (shift+tab to cycle)` whenever a permission mode is active, and the harness declared a perfectly ready session `not_ready` for 90 s because of it. **007's readiness check must key on the composer's structure, not one hint string**, and must treat an unrecognised pane as not-ready | `deliver --state idle` (startup rows), `doctor` |
 | ~~**007**~~ **ANSWERED (WSL)** | "`sendEscape` halts a mid-turn agent and leaves the session alive" | **Closed provisionally: 3/3, ~124 ms, session alive every time**, pane shows an interrupted marker ([§3](#3-does-send-keys-escape-halt-the-turn-without-killing-the-session-and-how-fast--measured-wsl-124-ms)). Interrupt is not Kill on this build | `interrupt` — **re-run on the VPS** |
-| **007** | The scoped sudoers file, `$HOME` and `CLAUDE_CONFIG_DIR` resolution under `sudo -u` | Completely unmeasured. If the two users share a tmux socket, or `$HOME` does not follow, provisioning and session isolation are both wrong, and the failure looks like "the agent used the wrong login" | `sudo-parity` |
+| ~~**007**~~ **ANSWERED (container)** | The scoped sudoers file, `$HOME` and `CLAUDE_CONFIG_DIR` resolution under `sudo -u` | **Closed, 7/7** ([§7](#7-does-sudo--u-user-tmux--behave-identically-to-running-as-that-user--measured-container-all-seven-rows-green)). Per-user tmux sockets with mutual invisibility, `$HOME` follows, `CLAUDE_CONFIG_DIR` reaches the pane, the agent user cannot kill the caller's session. Full fidelity — permission semantics, not hardware | `sudo-parity` — **done in `deploy/vps-sim/`** |
 | **008** session registry **ANSWERED (WSL), with a new hazard** | "owns the session state machine **and the message queue if ticket 003 showed tmux cannot be trusted with it**"; open question: "whether a message sent to a mid-turn agent is queued by us or by tmux" | **tmux/the TUI does hold the queue: 8/8 `queued`, nothing dropped, the running turn not truncated** ([§2](#2-what-happens-to-a-message-sent-mid-turn-queued-dropped-or-interleaved--measured-wsl-queued-88)), so the orchestrator-side durable queue is not forced. **Two new obligations instead:** (a) delivery must be gated on dialog state, because a message delivered while a permission dialog is up **approves it** ([§1](#1-does-send-keys-text-enter-deliver-reliably-when-the-agent-is-idle-mid-turn-and-at-a-permission-prompt--measured-wsl)); (b) `esc to interrupt` is not a busy signal once a message is queued — it clears within ~150–340 ms while the turn runs on | `deliver --state midturn` |
 | ~~**008**~~ **ANSWERED (WSL)** | "`POST /sessions/:id/interrupt` returns within 2 s and leaves the session `running`" | **Both hold with an order of magnitude to spare: ~124 ms, session alive 3/3.** Note the interrupt does *not* cancel a queued message — it runs next (§3) | `interrupt` |
 | **008** **NARROWED (WSL)** | "A SessionEnd event marks the row `ended` even when the kill came from outside the orchestrator" | SessionEnd fired **8/8** on `kill-session`, idle and mid-turn ([§5](#5-does-tmux-kill-session-reliably-fire-sessionend--measured-wsl-yes-88)), so the mechanism exists. But `reason` is `"other"` for every external kill — 008 **cannot** use the payload to tell an orchestrator kill from a human's `tmux kill-session`, and must infer that from its own state | `session-end` — **re-run on the VPS** |
@@ -630,7 +662,7 @@ how downstream tickets should be written.
 | `deliver --state prompt` | **yes — 3 live permission dialogs** |
 | `interrupt`, `interrupt --with-queued` | **yes — 6 live interrupts** |
 | `doctor`, every `--dry-run` plan | yes |
-| `sudo-parity` | **no — never attempted.** Needs the VPS; see §7 |
+| `sudo-parity` | **yes — measured in `deploy/vps-sim/`, 7/7.** Did not need the VPS after all; see §7 |
 
 **Every turn-dependent path in the harness has now executed against a live login.** Four bugs were
 found by doing so, all fixed in this pass; the first three would each have produced a *plausible

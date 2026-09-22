@@ -52,7 +52,7 @@ These are user, permission and process semantics. A container has the real ones.
 | --- | --- | --- |
 | `nopasswd` | ok | the grant works non-interactively |
 | `tmux_path` | ok | `tmux 3.3a` at `/usr/bin/tmux`, matching the rule byte for byte |
-| `socket` | **per_user** | agent `/tmp/tmux-1002/default`, office `/tmp/tmux-1001/default` |
+| `socket` | **per_user** | agent `/tmp/tmux-1002/default`, office `/tmp/tmux-1001/default` — re-verified live, each server sees only its own session |
 | `whoami` | ok | pane reports `gluy` |
 | `home` | ok | `HOME=/home/gluy`, matching `getent passwd` |
 | `config_dir` | present | `CLAUDE_CONFIG_DIR` set via `new-session -e` reaches the pane process |
@@ -62,9 +62,10 @@ This answers the question 015 and 008 were both exposed to: *"If the two users s
 socket, or `$HOME` does not follow, provisioning and session isolation are both wrong, and the
 failure looks like 'the agent used the wrong login'."* They do not share, and it does follow.
 
-One honesty note on the socket row: the two paths differ by **uid**, which is the evidence that
-matters, but the probe read them from servers that were not running (`No such file or
-directory`). The paths are per-uid by construction; a live-server comparison would be stronger.
+The socket row was re-checked with a session running under **each** account, because the harness
+reads the path from a server that may not exist yet and would otherwise report two "no such file"
+paths that merely differ by uid. Live: the paths differ, and `office sees: officelive` /
+`agent sees: agentlive` — mutual invisibility, not inferred from path strings.
 
 ## What this CANNOT prove
 
@@ -89,9 +90,10 @@ ballooning, so the memory accounting is real. Still not the VPS's CPU, disk or c
 account question, not a host question, and the answer is identical in a container and on a VPS.
 Still open — see `docs/spikes/001-hook-payloads.md`.
 
-## A harness bug this found — read before the VPS trip
+## A harness bug this found — now fixed
 
-`spikes/tmux/drive-session.sh` (ticket 003's deliverable) probes for the sudo grant with:
+**Fixed in `spikes/tmux/drive-session.sh`; recorded here because the failure mode is worth
+recognising.** Both the `doctor` and `sudo-parity` preconditions probed for the sudo grant with:
 
 ```sh
 sudo -n -u "$SPIKE_USER" true
@@ -116,10 +118,9 @@ The fix is to probe with the command the rule actually permits:
 sudo -n -u "$SPIKE_USER" "$SPIKE_TMUX" -V
 ```
 
-Two call sites: `cmd_doctor` and the `cmd_sudo_parity` precondition. The §7 table above was
-produced with exactly that change applied to a container-local copy — the repo's file is
-**unmodified**, because `drive-session.sh` belongs to ticket 003's file scope and this repo does
-not let one ticket edit another's files without saying so.
+Two call sites: `cmd_doctor` and the `cmd_sudo_parity` precondition. Both now probe with
+`"$SPIKE_TMUX" -V`, and `doctor` reports `passwordless sudo to gluy for /usr/bin/tmux works`
+against this image. The §7 table above is produced by the repo's own harness, unpatched.
 
 ## Authentication — mount a copy, never the live directory
 
@@ -136,6 +137,13 @@ Without auth, `doctor` and `sudo-parity` run in full. The subcommands that drive
 `deliver`, `chars`, `interrupt`, `session-end`, `rss` — need an authenticated agent, because
 they all call `start_agent` and wait for the composer. Note `chars --mode compose` needs the
 agent but spends no tokens: it types into the composer and never presses Enter.
+
+## Related: the suite on Linux
+
+`deploy/linux-check/` runs the repo's own tests inside this same image, against the dev database.
+Every test run before 2026-09-22 happened on Windows; the suite now passes on Linux too — 218
+passed, 1 skipped, the same as Windows — using the TLS material `provision-host.sh` generates, so
+the certs are exercised rather than assumed.
 
 ## What is left for the real VPS
 

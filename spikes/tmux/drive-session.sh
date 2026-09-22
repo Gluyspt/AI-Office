@@ -1127,11 +1127,16 @@ cmd_sudo_parity() {
     emit sudo-parity 0 preconditions skipped - - "SPIKE_USER is not set — run this on the VPS as the office user with SPIKE_USER=<agent user>"
     return 0
   fi
-  if ! sudo -n -u "$SPIKE_USER" true 2>/dev/null; then
-    emit sudo-parity 0 nopasswd skipped - - "sudo -n -u $SPIKE_USER failed: no passwordless rule, or a password is required"
+  # Probe with tmux, NOT with `true`. deploy/host/sudoers.d/office grants
+  # exactly /usr/bin/tmux and nothing else, so a CORRECTLY scoped rule
+  # denies `sudo -n -u <user> true` — and probing with it made this whole
+  # test skip every row against a working host, reporting "no passwordless
+  # rule" and pointing the operator at the one file that was right.
+  if ! sudo -n -u "$SPIKE_USER" "$SPIKE_TMUX" -V >/dev/null 2>&1; then
+    emit sudo-parity 0 nopasswd skipped - - "sudo -n -u $SPIKE_USER $SPIKE_TMUX -V failed: no passwordless rule, a password is required, or the rule grants a different tmux path"
     return 0
   fi
-  emit sudo-parity 1 nopasswd ok - - "sudo -n -u $SPIKE_USER true succeeded"
+  emit sudo-parity 1 nopasswd ok - - "sudo -n -u $SPIKE_USER $SPIKE_TMUX -V succeeded"
   v="$(sudo -n -u "$SPIKE_USER" "$SPIKE_TMUX" -V 2>&1 || true)"
   emit sudo-parity 2 tmux_path "$(printf '%s' "$v" | grep -q '^tmux' && echo ok || echo failed)" - - "$v"
   sock="$(sudo -n -u "$SPIKE_USER" "$SPIKE_TMUX" display-message -p '#{socket_path}' 2>&1 || true)"
@@ -1197,10 +1202,12 @@ cmd_doctor() {
     emit doctor 0 project_dir missing - - "$SPIKE_PROJECT_DIR does not exist — create a throwaway repo there"
   fi
   if [ -n "$SPIKE_USER" ]; then
-    if sudo -n -u "$SPIKE_USER" true 2>/dev/null; then
-      emit doctor 0 sudo ok - - "passwordless sudo to $SPIKE_USER works"
+    # Probed with tmux rather than `true`: the scoped sudoers rule permits
+    # only $SPIKE_TMUX, so `true` is denied on a correctly configured host.
+    if sudo -n -u "$SPIKE_USER" "$SPIKE_TMUX" -V >/dev/null 2>&1; then
+      emit doctor 0 sudo ok - - "passwordless sudo to $SPIKE_USER for $SPIKE_TMUX works"
     else
-      emit doctor 0 sudo unavailable - - "sudo -n -u $SPIKE_USER failed — sudo-parity and every sudo-path row will be skipped"
+      emit doctor 0 sudo unavailable - - "sudo -n -u $SPIKE_USER $SPIKE_TMUX -V failed — sudo-parity and every sudo-path row will be skipped"
     fi
   else
     emit doctor 0 sudo not_configured - - "SPIKE_USER empty: tmux runs as $(id -un), which is NOT what the VPS will do"
