@@ -203,11 +203,14 @@ describe("unblocking on delivery", () => {
     expect(unblocked[0]!.taskId).toBe(dependent);
     expect(unblocked[0]!.owner).toBe("gluy");
 
-    const events = await pool.query<{ n: string }>(
-      "select count(*) as n from events where type = 'TasksUnblocked' and payload->>'delivered_task_id' = $1",
+    const events = await pool.query<{ n: string; project_id: string | null }>(
+      "select count(*) as n, min(project_id::text) as project_id from events " +
+        "where type = 'TasksUnblocked' and payload->>'delivered_task_id' = $1",
       [blocker],
     );
     expect(Number(events.rows[0]!.n)).toBe(1);
+    // Set on the column, so a project-filtered bus subscriber receives it.
+    expect(events.rows[0]!.project_id).toBe(project);
   });
 
   it("leaves a dependent blocked while another dependency is outstanding", async () => {

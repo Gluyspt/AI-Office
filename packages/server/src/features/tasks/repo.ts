@@ -85,13 +85,10 @@ export class StateNotPatchableError extends TaskFieldError {
  * constructs) so it is stored, published on the bus and dispatched to
  * handlers exactly like a hook-sourced one.
  *
- * KNOWN GAP, flagged rather than worked around: `events.project_id` is set
- * by nothing — ingest.ts's persist() does not take one, and that file
- * belongs to ticket 005. So this event carries its project in the *payload*
- * and arrives with a null `projectId` column, which means a bus subscriber
- * filtering by project will not see it. Ticket 023 needs either a
- * project-aware persist or a payload-level filter; noted in this ticket's
- * open questions.
+ * The event carries its project in BOTH the payload and the `project_id`
+ * column. The column is what ticket 006's bus filters subscriptions on, so
+ * an event without it never reaches a client watching one board — which is
+ * exactly the subscriber this event exists for.
  */
 export async function insertTask(task: NewTask, client?: PoolClient): Promise<TaskRecord> {
   const sql = `insert into tasks
@@ -121,14 +118,19 @@ export async function insertTask(task: NewTask, client?: PoolClient): Promise<Ta
 
   // After the insert, never before: an event announcing a task that failed
   // to store is worse than a late one.
-  await recordSystemEvent("TaskCreated", {
-    task_id: record.id,
-    project_id: record.projectId,
-    title: record.title,
-    department: record.department,
-    owner: record.owner,
-    state: record.state,
-  });
+  await recordSystemEvent(
+    "TaskCreated",
+    {
+      task_id: record.id,
+      project_id: record.projectId,
+      title: record.title,
+      department: record.department,
+      owner: record.owner,
+      state: record.state,
+    },
+    null,
+    record.projectId,
+  );
 
   return record;
 }

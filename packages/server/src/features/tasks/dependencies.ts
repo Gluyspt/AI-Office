@@ -298,7 +298,7 @@ export async function unblockDependents(
   client?: PoolClient,
 ): Promise<readonly UnblockedTask[]> {
   const sql = `
-    select t.id, t.owner, t.department
+    select t.id, t.owner, t.department, t.project_id
       from task_dependencies d
       join tasks t on t.id = d.task_id
      where d.blocked_by_task_id = $1
@@ -311,9 +311,10 @@ export async function unblockDependents(
        )
      order by t.id`;
   const params = [deliveredTaskId, SATISFIED_STATES];
+  type UnblockedRow = { id: string; owner: string; department: string; project_id: string };
   const result = client
-    ? await client.query<{ id: string; owner: string; department: string }>(sql, params)
-    : await query<{ id: string; owner: string; department: string }>(sql, params);
+    ? await client.query<UnblockedRow>(sql, params)
+    : await query<UnblockedRow>(sql, params);
 
   const unblocked: UnblockedTask[] = result.rows.map((row) => ({
     taskId: asTaskId(row.id),
@@ -322,14 +323,22 @@ export async function unblockDependents(
   }));
 
   if (unblocked.length > 0) {
-    await recordSystemEvent("TasksUnblocked", {
-      delivered_task_id: deliveredTaskId,
-      unblocked: unblocked.map((task) => ({
-        task_id: task.taskId,
-        owner: task.owner,
-        department: task.department,
-      })),
-    });
+    await recordSystemEvent(
+      "TasksUnblocked",
+      {
+        delivered_task_id: deliveredTaskId,
+        unblocked: unblocked.map((task) => ({
+          task_id: task.taskId,
+          owner: task.owner,
+          department: task.department,
+        })),
+      },
+      null,
+      // Every dependent of one task is in that task's project - a
+      // dependency may not cross projects - so one project id covers the
+      // whole batch.
+      result.rows[0]!.project_id,
+    );
   }
 
   return unblocked;
@@ -372,33 +381,36 @@ export async function deleteTaskAndReevaluate(
   if (affected.length === 0) return [];
 
   const freed: UnblockedTask[] = [];
+  let projectId: string | null = null;
   for (const dependent of affected) {
     const status = await isClaimable(dependent, client);
     if (!status.claimable) continue;
+    const sql = "select owner, department, project_id from tasks where id = $1";
+    type OwnerRow = { owner: string; department: string; project_id: string };
     const row = client
-      ? await client.query<{ owner: string; department: string }>(
-          "select owner, department from tasks where id = $1",
-          [dependent],
-        )
-      : await query<{ owner: string; department: string }>(
-          "select owner, department from tasks where id = $1",
-          [dependent],
-        );
+      ? await client.query<OwnerRow>(sql, [dependent])
+      : await query<OwnerRow>(sql, [dependent]);
     const task = row.rows[0];
     if (task) {
+      projectId ??= task.project_id;
       freed.push({ taskId: dependent, owner: task.owner, department: task.department });
     }
   }
 
   if (freed.length > 0) {
-    await recordSystemEvent("TasksUnblocked", {
-      deleted_task_id: taskId,
-      unblocked: freed.map((task) => ({
-        task_id: task.taskId,
-        owner: task.owner,
-        department: task.department,
-      })),
-    });
+    await recordSystemEvent(
+      "TasksUnblocked",
+      {
+        deleted_task_id: taskId,
+        unblocked: freed.map((task) => ({
+          task_id: task.taskId,
+          owner: task.owner,
+          department: task.department,
+        })),
+      },
+      null,
+      projectId,
+    );
   }
   return freed;
 }

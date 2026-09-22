@@ -46,6 +46,39 @@ async function pendingMigrationFiles(dir: string, applied: ReadonlySet<string>):
 }
 
 /**
+ * Warns when a pending migration is numbered BELOW one already applied.
+ *
+ * This runner applies *pending* files in filename order, so filename order
+ * equals application order only on a database that starts empty. A file
+ * added later with a lower number therefore runs after its numeric
+ * successors, and any dependency it has on them is satisfied by accident of
+ * history rather than by design.
+ *
+ * It is not an error — it has happened twice here on purpose and was safe
+ * both times (0005_tasks.sql documented the hazard; 0006_task_dependencies
+ * landed after 0007_file_locks and referenced only lower-numbered tables).
+ * But "safe" was established by a human reading the file, and the condition
+ * was previously invisible. This makes it say so out loud, once, naming the
+ * files involved.
+ */
+function warnOnOutOfOrder(pending: readonly string[], applied: ReadonlySet<string>): void {
+  if (applied.size === 0) return; // a fresh database applies everything in order
+  const highestApplied = [...applied].sort().at(-1)!;
+  const outOfOrder = pending.filter((name) => name < highestApplied);
+  if (outOfOrder.length === 0) return;
+
+  const lines = [
+    `WARNING: ${outOfOrder.length} pending migration(s) numbered below ${highestApplied}, ` +
+      "which has already been applied:",
+    ...outOfOrder.map((name) => `  - ${name}`),
+    "  They will run AFTER it, not before. That is fine as long as none of them depends",
+    "  on a table a higher-numbered migration created — check before trusting this run",
+    "  on a database that is not empty.",
+  ];
+  console.warn(lines.join("\n"));
+}
+
+/**
  * Applies every pending migration in `dir`, in filename order, one
  * transaction per file. Returns the filenames applied, in the order they
  * ran. A file that throws leaves that file's changes rolled back and
@@ -54,6 +87,7 @@ async function pendingMigrationFiles(dir: string, applied: ReadonlySet<string>):
 export async function runMigrations(dir: string = migrationsDir): Promise<string[]> {
   const applied = await appliedMigrations();
   const pending = await pendingMigrationFiles(dir, applied);
+  warnOnOutOfOrder(pending, applied);
   const appliedNow: string[] = [];
 
   for (const filename of pending) {

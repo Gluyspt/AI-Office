@@ -20,12 +20,20 @@ here.
 ## Running locally
 
 ```sh
-cp .env.example .env          # then edit if your local ports/paths differ
+cp .env.example .env                           # then edit if your ports/paths differ
 pnpm install
-docker compose -f deploy/dev/compose.yml up -d   # starts Postgres 16
-pnpm migrate                                     # applies db/migrations/*.sql (ticket 004+)
+docker compose -f deploy/dev/compose.yml up -d # starts Postgres 16
+node scripts/dev-cert.mjs                      # writes .devtls/{cert,key}.pem
+pnpm migrate                                   # applies db/migrations/*.sql
 pnpm dev
 ```
+
+**Do not skip the certificate step.** Every endpoint in this system is https, loopback included,
+so the server will not start without TLS material — and `.env.example` ships *production* paths
+(`/srv/office/tls/...`) that exist on no developer machine. Copy it verbatim, skip this, and around
+a dozen test suites fail with `ENOENT` errors that read like broken code. `scripts/dev-cert.mjs`
+prints the two lines to paste into `.env` once it has written the pair. On a real host the same
+pair comes from `deploy/host/provision-host.sh` instead.
 
 `deploy/dev/compose.yml` starts Postgres only — the office app itself (event server + web app) runs
 on the host, not in a container, so hooks and tmux sessions on the same machine can reach it without

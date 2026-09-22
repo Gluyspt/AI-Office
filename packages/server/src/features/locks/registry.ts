@@ -215,17 +215,22 @@ export async function acquireScope(
   // visible rather than inferred from a task that mysteriously stops
   // conflicting.
   if (reclaimed.length > 0) {
-    await recordSystemEvent("FileLocksSwept", {
-      trigger: "acquire",
-      expired: reclaimed.map((lock) => ({
-        lock_id: lock.id,
-        project_id: lock.projectId,
-        task_id: lock.taskId,
-        session_id: lock.sessionId,
-        path_pattern: lock.pathPattern,
-      })),
-      orphaned: [],
-    });
+    await recordSystemEvent(
+      "FileLocksSwept",
+      {
+        trigger: "acquire",
+        expired: reclaimed.map((lock) => ({
+          lock_id: lock.id,
+          project_id: lock.projectId,
+          task_id: lock.taskId,
+          session_id: lock.sessionId,
+          path_pattern: lock.pathPattern,
+        })),
+        orphaned: [],
+      },
+      null,
+      input.projectId,
+    );
   }
 
   return result;
@@ -348,22 +353,45 @@ export async function expireLocks(client?: PoolClient): Promise<SweepResult> {
   const expired = expiredResult.rows.map(rowToLock);
   const orphaned = orphanResult.rows.map(rowToLock);
 
-  if (expired.length > 0 || orphaned.length > 0) {
-    await recordSystemEvent("FileLocksSwept", {
-      trigger: "sweeper",
-      expired: expired.map((lock) => ({
-        lock_id: lock.id,
-        project_id: lock.projectId,
-        task_id: lock.taskId,
-        session_id: lock.sessionId,
-        path_pattern: lock.pathPattern,
-      })),
-      orphaned: orphaned.map((lock) => ({
-        lock_id: lock.id,
-        task_id: lock.taskId,
-        path_pattern: lock.pathPattern,
-      })),
-    });
+  // One event PER PROJECT, not one event covering all of them.
+  //
+  // The sweeper is global, but ticket 006's bus filters subscriptions on
+  // events.project_id — a single cross-project event would have to leave
+  // that column null, and would then reach no client watching a board. A
+  // reclaimed lock means an agent lost its files without asking, so it has
+  // to arrive at the board it concerns.
+  const byProject = new Map<string, { expired: FileLockRecord[]; orphaned: FileLockRecord[] }>();
+  const bucket = (projectId: string) => {
+    const existing = byProject.get(projectId);
+    if (existing) return existing;
+    const created = { expired: [] as FileLockRecord[], orphaned: [] as FileLockRecord[] };
+    byProject.set(projectId, created);
+    return created;
+  };
+  for (const lock of expired) bucket(lock.projectId).expired.push(lock);
+  for (const lock of orphaned) bucket(lock.projectId).orphaned.push(lock);
+
+  for (const [projectId, group] of byProject) {
+    await recordSystemEvent(
+      "FileLocksSwept",
+      {
+        trigger: "sweeper",
+        expired: group.expired.map((lock) => ({
+          lock_id: lock.id,
+          project_id: lock.projectId,
+          task_id: lock.taskId,
+          session_id: lock.sessionId,
+          path_pattern: lock.pathPattern,
+        })),
+        orphaned: group.orphaned.map((lock) => ({
+          lock_id: lock.id,
+          task_id: lock.taskId,
+          path_pattern: lock.pathPattern,
+        })),
+      },
+      null,
+      projectId,
+    );
   }
 
   return { expired, orphaned };

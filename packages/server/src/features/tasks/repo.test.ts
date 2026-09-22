@@ -364,12 +364,21 @@ describe("HTTP surface", () => {
     // database, so "one more TaskCreated than a moment ago" is a claim
     // about the whole table that any concurrent insert falsifies — the
     // same race that `listEvents({limit: 1})` had.
-    const stored = await pool.query<{ payload: { task_id: string; title: string } }>(
-      "select payload from events where type = 'TaskCreated' and payload->>'task_id' = $1",
+    const stored = await pool.query<{
+      payload: { task_id: string; title: string };
+      project_id: string | null;
+    }>(
+      "select payload, project_id from events where type = 'TaskCreated' and payload->>'task_id' = $1",
       [id],
     );
     expect(stored.rows).toHaveLength(1);
     expect(stored.rows[0]!.payload.title).toBe("announced");
+
+    // The COLUMN, not just the payload. Ticket 006's bus filters
+    // subscriptions on events.project_id, so an event with a null project
+    // never reaches a client watching one board — which is exactly the
+    // subscriber this event exists for.
+    expect(stored.rows[0]!.project_id).toBe(projectId);
   });
 
   it("GET /board answers 400 for a state outside the union", async () => {

@@ -280,9 +280,13 @@ describe("TTL, heartbeat and the sweeper", () => {
     expect(await listActiveLocks({ taskId: task })).toHaveLength(0);
 
     // A reclaimed lock means an agent lost its files without asking; that
-    // has to be visible rather than inferred.
+    // has to be visible rather than inferred — and it has to arrive at the
+    // board it concerns, which means project_id on the column, not just in
+    // the payload. The sweeper is cross-project, so it emits one event per
+    // project rather than one with a null project that reaches nobody.
     const events = await pool.query<{ n: string }>(
-      "select count(*) as n from events where type = 'FileLocksSwept'",
+      "select count(*) as n from events where type = 'FileLocksSwept' and project_id = $1",
+      [project],
     );
     expect(Number(events.rows[0]!.n)).toBeGreaterThan(0);
   });

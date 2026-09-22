@@ -36,6 +36,13 @@ tickets add endpoints to `features/tasks/` (013 tasks, 014 dependencies, 017 act
 advance), so a single `routes.ts` per feature would force them onto one file. Each owns its own
 file inside the shared `routes/` directory instead.
 
+**Maintenance files.** Two paths belong to no ticket because they fix gaps no ticket owned.
+`db/migrations/0013_events_project_fk.sql` gives `events.project_id` an `on delete cascade` it
+never had — harmless while the column was always null, and a hard blocker on deleting any project
+the moment events started carrying one. It is numbered 0013 because 0008–0012 are already claimed
+by unwritten tickets. `scripts/dev-cert.mjs` generates the local TLS pair that `.env.example`
+points at but nothing created; on a real host `deploy/host/provision-host.sh` does the same job.
+
 **Manifest exception.** Dependency additions to an existing `package.json`, appended lines in `.env.example`, and a new `loadXConfig()` section appended to `packages/server/src/core/config.ts`, are append-only and are *not* part of any ticket's file scope. Every other file is owned. Editing an existing config section, the shared readers, or `ConfigError` still belongs to ticket 004.
 
 **Open questions are not TODOs.** Where the design leaves something undecided, the ticket says so and names the decision rather than inventing an answer. Several open questions are the design's own, carried forward to the ticket where they first bite.
@@ -199,6 +206,8 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `db/migrations/0010_unguarded_edits.sql` | 020 |
 | `db/migrations/0011_pause.sql` | 028 |
 | `db/migrations/0012_gate_bypass.sql` | 032 |
+| `db/migrations/0013_events_project_fk.sql` | — (maintenance; see below) |
+| `scripts/dev-cert.mjs` | — (maintenance; see below) |
 | `deploy/host/sudoers.d/office` | 007 |
 | `docs/spikes/001-hook-payloads.md` | 002 |
 | `docs/spikes/002-tmux-tui-control.md` | 003 |

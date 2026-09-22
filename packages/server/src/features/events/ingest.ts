@@ -147,13 +147,21 @@ async function persist(
   type: string,
   sessionId: string | null,
   payload: unknown,
+  projectId: string | null = null,
 ): Promise<StoredEventRow> {
+  // project_id stays null for hook-sourced events: nothing in a hook
+  // payload identifies a project (see 0002_events.sql). Events this
+  // process constructs DO know theirs, and must set it — ticket 006's
+  // bus filters subscriptions on this column, so an event with a null
+  // project never reaches a client watching one board. That was a real
+  // gap: 013's TaskCreated was invisible to exactly the subscriber it
+  // existed for.
   const result = await query<EventRowDb>(
-    `insert into events (session_id, type, payload)
-     values ($1, $2, $3::jsonb)
+    `insert into events (session_id, type, payload, project_id)
+     values ($1, $2, $3::jsonb, $4)
      returning id, project_id, session_id, type, payload, received_at,
                received_at::text as received_at_text`,
-    [sessionId, type, JSON.stringify(payload)],
+    [sessionId, type, JSON.stringify(payload), projectId],
   );
   const row = result.rows[0];
   if (!row) {
@@ -214,8 +222,9 @@ async function finalize(
   type: string,
   sessionId: string | null,
   payload: unknown,
+  projectId: string | null = null,
 ): Promise<StoredEventRow> {
-  const stored = await persist(type, sessionId, payload);
+  const stored = await persist(type, sessionId, payload, projectId);
   publish(stored);
   await dispatch(stored);
   return stored;
@@ -249,8 +258,9 @@ export async function recordSystemEvent(
   type: string,
   payload: Record<string, unknown>,
   sessionId: string | null = null,
+  projectId: string | null = null,
 ): Promise<StoredEventRow> {
-  return finalize(type, sessionId, payload);
+  return finalize(type, sessionId, payload, projectId);
 }
 
 // --- Query (GET /events) --------------------------------------------------------
