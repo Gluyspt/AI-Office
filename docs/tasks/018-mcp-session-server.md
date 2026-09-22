@@ -30,8 +30,8 @@ orchestrator at all — without it, a lead in a loop can exhaust the VPS.
 - `packages/mcp-session/src/office-client.ts`
 - `packages/mcp-session/src/tools/start-session.ts`
 - `packages/mcp-session/src/tools/message-session.ts`
-- `packages/server/src/orchestrator/caps.ts` — per-project concurrency limit and the global memory floor, evaluated inside ticket 008's start path
-- `packages/server/src/orchestrator/spawn-queue.ts` — queued spawns, the reason each was refused, and draining as capacity frees
+- `packages/server/src/features/orchestrator/caps.ts` — per-project concurrency limit and the global memory floor, evaluated inside ticket 008's start path
+- `packages/server/src/features/orchestrator/spawn-queue.ts` — queued spawns, the reason each was refused, and draining as capacity frees
 - `db/migrations/0008_spawn_queue.sql` — the queue, durable across an orchestrator restart
 
 ### Files modified

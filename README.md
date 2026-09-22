@@ -22,12 +22,12 @@ here.
 ```sh
 cp .env.example .env          # then edit if your local ports/paths differ
 pnpm install
-docker compose -f docker-compose.dev.yml up -d   # starts Postgres 16
+docker compose -f deploy/dev/compose.yml up -d   # starts Postgres 16
 pnpm migrate                                     # applies db/migrations/*.sql (ticket 004+)
 pnpm dev
 ```
 
-`docker-compose.dev.yml` starts Postgres only — the office app itself (event server + web app) runs
+`deploy/dev/compose.yml` starts Postgres only — the office app itself (event server + web app) runs
 on the host, not in a container, so hooks and tmux sessions on the same machine can reach it without
 crossing a container boundary.
 
@@ -60,10 +60,21 @@ A few more conventions of the same shape get established later (hook config frag
 file-based web routes in ticket 022) — the index above tracks the full set as they land. The three
 that exist from this ticket on:
 
-**Autoloaded server routes.** Route handlers live one-per-file under
-`packages/server/src/routes/`. The server (ticket 005) loads every file in that directory at
-startup instead of importing them from a central registry. Adding an endpoint means adding a file
-to `routes/`; it never touches a file another route owns.
+**Autoloaded server routes.** The server is laid out as one folder per feature under
+`packages/server/src/features/`, with shared infrastructure (the Fastify app, the config reader,
+the database pool) in `packages/server/src/core/`. Route handlers live one-per-file under their
+own feature's `routes/` directory — `features/tasks/routes/tasks.ts`, and so on. The server
+(ticket 005) walks every `features/*/routes/` directory at startup instead of importing from a
+central registry. Adding an endpoint means adding a file to a feature's `routes/`, or adding a
+whole new feature folder; it never touches a file another route owns.
+
+The unit that is autoloaded is the **file**, not the feature: several tickets add endpoints to the
+same area (013 tasks, 014 dependencies, 017 actions, 032 advance), and one-file-one-ticket needs
+each of them to own a separate file.
+
+**Event handlers live with their feature.** `features/*/handlers/` is collected the same way, so a
+handler sits next to the code it serves — the Stop-hook reply handler under `features/chat/`, the
+tool handler under `features/locks/` — rather than in one shared directory.
 
 **Numbered SQL migrations.** Schema changes are individual files in `db/migrations/`, named
 `NNNN_description.sql` (four-digit, zero-padded, strictly increasing). The migration runner (ticket
@@ -120,7 +131,7 @@ docs/
 
 - **Test runner.** The design doesn't name one. This repo uses Vitest, consistent with the
   TypeScript/Node/pnpm stack decision — see `docs/tasks/001-monorepo-scaffold.md`.
-- **Postgres version and production hosting.** `docker-compose.dev.yml` pins Postgres 16 for local
+- **Postgres version and production hosting.** `deploy/dev/compose.yml` pins Postgres 16 for local
   dev only. Whether production runs Postgres in a container or as a system package on the VPS, and
   on what version, is not decided here.
 - **Repo topology.** Whether this office app lives in its own repo permanently separate from the

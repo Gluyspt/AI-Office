@@ -31,7 +31,7 @@ editing the same file.
 - `.gitignore`
 - `.editorconfig`
 - `.env.example`
-- `docker-compose.dev.yml` — Postgres 16 only; the app runs on the host in dev
+- `deploy/dev/compose.yml` — Postgres 16 only; the app runs on the host in dev
 - `vitest.config.ts` — workspace-level config, projects globbed from `packages/*` and `tests/*`
 - `packages/shared/package.json` — name `@office/shared`, subpath exports `./*` mapped to `./src/*.ts` (no barrel file, so each ticket owns its own module)
 - `packages/shared/tsconfig.json`
@@ -47,7 +47,7 @@ None — first ticket.
 - [ ] `pnpm install` succeeds from a clean checkout on Node 22.
 - [ ] `pnpm typecheck` passes with zero errors against the empty workspace.
 - [ ] `pnpm test` runs and reports 0 tests without erroring.
-- [ ] `docker compose -f docker-compose.dev.yml up -d` starts Postgres, and `psql "$DATABASE_URL" -c 'select 1'` succeeds using the values copied from `.env.example`.
+- [ ] `docker compose -f deploy/dev/compose.yml up -d` starts Postgres, and `psql "$DATABASE_URL" -c 'select 1'` succeeds using the values copied from `.env.example`.
 - [ ] `.env.example` contains every variable the spine needs, one comment per variable: DATABASE_URL, EVENT_SERVER_PORT, OFFICE_USER, PROJECT_ROOT.
 - [ ] `tsconfig.base.json` sets `strict: true` and `noUncheckedIndexedAccess: true`.
 - [ ] `pnpm-workspace.yaml` uses a glob, not an enumerated list — verify by adding a throwaway `packages/probe/package.json` and confirming `pnpm -r list` picks it up, then deleting it.

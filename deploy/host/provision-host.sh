@@ -8,7 +8,7 @@
 #
 # It runs in two places and must behave identically in both:
 #
-#   * inside deploy/Dockerfile.vps-sim, so the steps are exercised on every
+#   * inside deploy/vps-sim/Dockerfile, so the steps are exercised on every
 #     image build rather than improvised once on a rented box
 #   * on the real VPS, as root
 #
@@ -79,7 +79,7 @@ else
   bad "TMUX_BIN=$TMUX_BIN does not exist; tmux is at: $WHERE"
   say "sudo matches the permitted command as a literal path -- /usr/bin/tmux"
   say "and /bin/tmux are different grants even if one symlinks to the other."
-  say "Fix deploy/sudoers.d/office and TMUX_BIN in .env together, or symlink."
+  say "Fix deploy/host/sudoers.d/office and TMUX_BIN in .env together, or symlink."
 fi
 
 # ---------------------------------------------------------------------------

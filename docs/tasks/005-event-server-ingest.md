@@ -25,17 +25,17 @@ lets tickets 010, 020 and 027 add per-event behaviour without editing a shared d
 
 ### Files created
 
-- `packages/server/src/app.ts` — Fastify app, autoloads `src/routes/` so later tickets add a route file without editing a registry
-- `packages/server/src/server.ts` — process entry point, listen, graceful shutdown
-- `packages/server/src/routes/events.ts` — the `/events/*` endpoints from the design: `reply`, `failure`, `tool`, `permission`, `start`, `end`, `compact`, `model`
-- `packages/server/src/events/ingest.ts` — validate, persist, publish, then dispatch to handlers
-- `packages/server/src/events/handlers/loader.ts` — collects handler modules from `src/events/handlers/`, keyed by event type; unknown types are stored and ignored, never rejected
+- `packages/server/src/core/app.ts` — Fastify app, autoloads `src/features/*/routes/` so later tickets add a route file without editing a registry
+- `packages/server/src/core/server.ts` — process entry point, listen, graceful shutdown
+- `packages/server/src/features/events/routes/events.ts` — the `/events/*` endpoints from the design: `reply`, `failure`, `tool`, `permission`, `start`, `end`, `compact`, `model`
+- `packages/server/src/features/events/ingest.ts` — validate, persist, publish, then dispatch to handlers
+- `packages/server/src/features/events/handler-loader.ts` — collects handler modules from every `src/features/*/handlers/`, keyed by event type; unknown types are stored and ignored, never rejected
 - `packages/shared/src/events.ts` — the `OfficeEvent` union and per-event payload types
 - `db/migrations/0002_events.sql` — `events` table: id, project_id, session_id (nullable at this stage), type, payload jsonb, received_at, plus an index on (project_id, received_at desc)
 
 ### Files appended to (manifest exception, not owned)
 
-- `packages/server/src/config.ts` — **append** a `loadServerConfig()` validating `EVENT_SERVER_PORT`
+- `packages/server/src/core/config.ts` — **append** a `loadServerConfig()` validating `EVENT_SERVER_PORT`
   (and any other variable this ticket reads). Do not edit the existing `loadDatabaseConfig()`,
   `loadTlsConfig()`, the shared readers, or `ConfigError` — those belong to ticket 004. Follow the
   established shape: required-with-no-default where the server genuinely cannot run without the
@@ -52,7 +52,7 @@ None.
 - [ ] Every accepted event is stored with its full payload intact; a test round-trips one captured payload per event type and asserts deep equality.
 - [ ] A payload that fails validation is stored in a dead-letter form (type `unparsed`, raw body preserved) and still returns 2xx — a malformed hook must never stall the agent that sent it.
 - [ ] An unknown event type POSTed to `/events/<type>` is stored and returns 2xx without a handler present.
-- [ ] Adding a file to `src/events/handlers/` makes it run on the matching event with no edit to `ingest.ts` or `loader.ts` — verified with a temporary handler in a test.
+- [ ] Adding a file to a feature's `src/features/*/handlers/` makes it run on the matching event with no edit to `ingest.ts` or `handler-loader.ts` — verified with a temporary handler in a test.
 - [ ] The server responds to ingest in under 50 ms at p95 with 200 sequential POSTs, measured locally, so hooks do not slow agents.
 - [ ] `GET /events?project_id=&since=&limit=` returns events newest-first with a working `since` cursor.
 - [ ] Killing and restarting the process loses no stored event.

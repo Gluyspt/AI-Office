@@ -28,10 +28,10 @@ on completion, `SessionEnd`, and a TTL with a heartbeat.
 ### Files created
 
 - `db/migrations/0007_file_locks.sql` — `file_locks`: id, project_id, task_id, session_id, path_pattern, acquired_at, expires_at, paused, released_at; unique on active (project_id, path_pattern)
-- `packages/server/src/locks/overlap.ts` — pure overlap logic between two file-scope declarations
-- `packages/server/src/locks/registry.ts` — acquire, release, `releaseBySession`, heartbeat, expire, `listActive`
+- `packages/server/src/features/locks/overlap.ts` — pure overlap logic between two file-scope declarations
+- `packages/server/src/features/locks/registry.ts` — acquire, release, `releaseBySession`, heartbeat, expire, `listActive`
 - `packages/shared/src/locks.ts` — lock record and file-scope declaration types
-- `packages/server/src/routes/locks.ts` — `GET /locks`, `POST /locks/expire` (the sweeper trigger)
+- `packages/server/src/features/locks/routes/locks.ts` — `GET /locks`, `POST /locks/expire` (the sweeper trigger)
 
 ### Files modified
 

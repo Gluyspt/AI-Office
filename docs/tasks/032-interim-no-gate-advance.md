@@ -29,8 +29,8 @@ and **it is designed to be deleted in step 6**, not extended.
 ### Files created
 
 - `db/migrations/0012_gate_bypass.sql` — `gate_bypassed`, `bypassed_by`, `bypassed_at` on tasks. Highest migration number deliberately, so its removal unwinds last
-- `packages/server/src/tasks/advance-no-gate.ts` — the transition to `delivered`, the bypass record, and the unblock call into ticket 014
-- `packages/server/src/routes/task-advance.ts` — `POST /tasks/:id/advance-no-gate`
+- `packages/server/src/features/tasks/advance-no-gate.ts` — the transition to `delivered`, the bypass record, and the unblock call into ticket 014
+- `packages/server/src/features/tasks/routes/advance.ts` — `POST /tasks/:id/advance-no-gate`
 - `packages/web/src/features/board/AdvanceNoGate.tsx` — the control and its confirmation
 
 ### Files modified

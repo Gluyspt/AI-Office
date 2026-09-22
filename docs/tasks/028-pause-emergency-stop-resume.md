@@ -28,9 +28,9 @@ move tasks to `paused`, so a single Resume recovers every kind of interruption.
 ### Files created
 
 - `db/migrations/0011_pause.sql` — `pause_state`: project_id (null for global), kind, initiated_by, started_at, completed_at; plus a handoff reference column on sessions
-- `packages/server/src/orchestrator/pause.ts` — graceful pause and emergency stop, scoped to a project or global
-- `packages/server/src/orchestrator/resume.ts` — resume one task or every paused task in a project, respecting dependencies
-- `packages/server/src/routes/control.ts` — `POST /control/pause`, `POST /control/emergency-stop`, `POST /control/resume`, `GET /control/state`
+- `packages/server/src/features/orchestrator/pause.ts` — graceful pause and emergency stop, scoped to a project or global
+- `packages/server/src/features/orchestrator/resume.ts` — resume one task or every paused task in a project, respecting dependencies
+- `packages/server/src/features/orchestrator/routes/control.ts` — `POST /control/pause`, `POST /control/emergency-stop`, `POST /control/resume`, `GET /control/state`
 - `packages/shared/src/control.ts`
 
 ### Files modified

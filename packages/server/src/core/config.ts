@@ -29,7 +29,12 @@ import { fileURLToPath } from "node:url";
 // set to this package's directory, not the repo root where `.env` actually
 // lives (see README.md). Resolve relative to this file instead so behaviour
 // doesn't depend on which directory a script happened to be invoked from.
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+//
+// Four levels: packages/server/src/core/config.ts -> repo root. This count
+// is tied to this file's depth — it was three before config.ts moved into
+// src/core/, and the symptom of getting it wrong is every config value
+// reading as unset, which looks like a missing .env rather than a bad path.
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 loadDotenv({ path: path.join(repoRoot, ".env") });
 
 export class ConfigError extends Error {

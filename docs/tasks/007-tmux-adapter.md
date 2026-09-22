@@ -25,10 +25,10 @@ functions.
 
 ### Files created
 
-- `packages/server/src/orchestrator/tmux.ts` — `newSession`, `sendKeys`, `sendLiteral`, `sendEscape`, `killSession`, `hasSession`, `listSessions`, each shelling out through `sudo -u <user> tmux`
-- `packages/server/src/orchestrator/naming.ts` — deterministic session names from (project, role, dept, owner), with collision handling
-- `packages/server/src/orchestrator/shell-quote.ts` — argument construction and the message-delivery encoding chosen in ticket 003
-- `deploy/sudoers.d/office` — the scoped sudoers file from the design, with a comment per line
+- `packages/server/src/features/orchestrator/tmux.ts` — `newSession`, `sendKeys`, `sendLiteral`, `sendEscape`, `killSession`, `hasSession`, `listSessions`, each shelling out through `sudo -u <user> tmux`
+- `packages/server/src/features/orchestrator/naming.ts` — deterministic session names from (project, role, dept, owner), with collision handling
+- `packages/server/src/features/orchestrator/shell-quote.ts` — argument construction and the message-delivery encoding chosen in ticket 003
+- `deploy/host/sudoers.d/office` — the scoped sudoers file from the design, with a comment per line
 
 ### Files modified
 
@@ -44,7 +44,7 @@ None.
 - [ ] `killSession` on a non-existent session returns a typed "not found" result rather than throwing.
 - [ ] Session names are stable across restarts for the same inputs, and two projects with the same role and owner produce different names — asserted by a table-driven test.
 - [ ] Every tmux invocation has a timeout; a hung `sudo` rejects rather than leaking a process. Verified with a stub binary that sleeps.
-- [ ] `deploy/sudoers.d/office` passes `visudo -c -f`.
+- [ ] `deploy/host/sudoers.d/office` passes `visudo -c -f`.
 - [ ] The adapter never runs as root, and never passes a user-supplied value as the `sudo -u` target — the target comes from the session registry only. A test asserts the rejection of an unknown user.
 
 - [ ] **The VPS re-measurement is run and recorded.** `spikes/tmux/drive-session.sh` is executed on the
@@ -61,7 +61,7 @@ None.
   kernel, RSS against WSL2 memory accounting, and `sudo -u` on a host where sudo demands a password
   would all have been wrong in ways that stop being visible once copied into this adapter. No ticket in
   steps 1–3 sets up the VPS, so the criterion lands here — 007 is the first ticket that needs a real
-  Linux host and it already owns `deploy/sudoers.d/office`.
+  Linux host and it already owns `deploy/host/sudoers.d/office`.
 - **Three criteria above currently have no source.** "Every character class from ticket 003's
   findings", "using the mechanism that spike recorded", and "state the measured limit in a code
   comment" all cite measurements that do not exist yet. They are not satisfiable until the

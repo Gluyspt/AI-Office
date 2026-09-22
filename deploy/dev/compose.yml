@@ -1,0 +1,33 @@
+# Local dev stack: Postgres 16 only — the office app itself runs on the
+# host (see README.md), not in a container.
+#
+#   docker compose -f deploy/dev/compose.yml up -d
+#
+# The project name is pinned. Compose otherwise derives it from the
+# directory holding this file, so moving the file from the repo root into
+# deploy/dev/ would silently rename the project to "dev" — a NEW, empty
+# database, with the existing ai_office_pgdata volume orphaned rather than
+# reused. Pinning it keeps every container and volume this stack has always
+# had.
+name: ai_office
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: office
+      POSTGRES_PASSWORD: office
+      POSTGRES_DB: office
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U office -d office"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:

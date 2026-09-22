@@ -29,8 +29,8 @@ breaker, rate limit — so one Resume recovers all of them.
 
 - `db/migrations/0005_tasks.sql` — `tasks` table: id, project_id, title, brief, department, owner, state, model, model_reason, branch, token_cost, turn_count, created_at, updated_at, plus `task_state_history`
 - `packages/shared/src/tasks.ts` — task record, state union, department union
-- `packages/server/src/tasks/states.ts` — the transition table and the single `transition()` function, with per-transition guards
-- `packages/server/src/tasks/model.ts` — construction and validation of a task, independent of storage
+- `packages/server/src/features/tasks/states.ts` — the transition table and the single `transition()` function, with per-transition guards
+- `packages/server/src/features/tasks/model.ts` — construction and validation of a task, independent of storage
 
 ### Files modified
 

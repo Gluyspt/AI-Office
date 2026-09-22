@@ -8,7 +8,7 @@
 #     `sudo -n -u <agent> tmux`, and whether the two users share a tmux
 #     socket. Spike 002 section 7 left this DEFERRED, NOT ATTEMPTED --
 #     because on WSL sudo demands a password. Here we own /etc/sudoers.
-#   * visudo -c -f on deploy/sudoers.d/office, and the whole sudoers set
+#   * visudo -c -f on deploy/host/sudoers.d/office, and the whole sudoers set
 #   * that the office account cannot reach root, or run anything but tmux
 #   * Node 22 exactly, closing ticket 001's criterion (package.json says
 #     ">=22", so the v24 run satisfied it vacuously)
@@ -26,8 +26,8 @@
 #     the VPS re-measurement.
 #
 # Build and run from the repo root:
-#   docker compose -f docker-compose.vps-sim.yml build
-#   docker compose -f docker-compose.vps-sim.yml run --rm vps-sim
+#   docker compose -f deploy/vps-sim/compose.yml build
+#   docker compose -f deploy/vps-sim/compose.yml run --rm vps-sim
 
 # Node 22 on Debian bookworm. The tag pins the major the workspace declares.
 FROM node:22-bookworm-slim
@@ -35,8 +35,8 @@ FROM node:22-bookworm-slim
 # Provisioning installs tmux/sudo/procps/openssl/git itself, so the image
 # stays honest about what the script is responsible for -- if a package is
 # missing on the real VPS, the script is what has to notice.
-COPY deploy/sudoers.d/office /opt/office-provision/sudoers.d/office
-COPY deploy/provision-host.sh /opt/office-provision/provision-host.sh
+COPY deploy/host/sudoers.d/office /opt/office-provision/sudoers.d/office
+COPY deploy/host/provision-host.sh /opt/office-provision/provision-host.sh
 RUN chmod +x /opt/office-provision/provision-host.sh
 
 # Accounts, scoped sudoers, directories, dev cert -- and the verification

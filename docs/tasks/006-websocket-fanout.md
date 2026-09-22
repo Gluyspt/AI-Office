@@ -24,8 +24,8 @@ be verified from a browser tab rather than by tailing the database.
 
 ### Files created
 
-- `packages/server/src/events/bus.ts` — in-process publish/subscribe with topic filtering by project and by session
-- `packages/server/src/routes/ws.ts` — the `/ws` endpoint: subscribe, filter, heartbeat, backpressure
+- `packages/server/src/features/events/bus.ts` — in-process publish/subscribe with topic filtering by project and by session
+- `packages/server/src/features/realtime/routes/ws.ts` — the `/ws` endpoint: subscribe, filter, heartbeat, backpressure
 - `packages/shared/src/ws.ts` — client/server frame types: `subscribe`, `unsubscribe`, `event`, `ping`, `pong`
 
 ### Files modified

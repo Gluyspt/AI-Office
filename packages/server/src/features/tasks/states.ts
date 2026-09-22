@@ -30,7 +30,7 @@ import type {
 } from "@office/shared/tasks";
 import { TASK_STATES, asTaskState, isTaskActorKind, isTaskDepartment } from "@office/shared/tasks";
 import { asProjectId, asTaskId, type TaskId } from "@office/shared/ids";
-import { query, withTransaction } from "../db/pool.ts";
+import { query, withTransaction } from "../../core/db/pool.ts";
 
 // --- The transition table ------------------------------------------------------
 

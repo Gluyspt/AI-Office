@@ -34,9 +34,9 @@ leaves a named seam for it.
 - `packages/mcp-tasks/src/office-client.ts` — typed HTTP client to the orchestrator, carrying the session identity ticket 016 settled on
 - `packages/mcp-tasks/src/tools/claim-task.ts`
 - `packages/mcp-tasks/src/tools/complete-task.ts`
-- `packages/server/src/tasks/claim.ts` — the transactional claim: owner check, dependency check, lock acquisition, state transition
-- `packages/server/src/tasks/complete.ts` — summary and learning required, locks released, transition to ready for QA
-- `packages/server/src/routes/task-actions.ts` — `POST /tasks/:id/claim`, `POST /tasks/:id/complete`
+- `packages/server/src/features/tasks/claim.ts` — the transactional claim: owner check, dependency check, lock acquisition, state transition
+- `packages/server/src/features/tasks/complete.ts` — summary and learning required, locks released, transition to ready for QA
+- `packages/server/src/features/tasks/routes/actions.ts` — `POST /tasks/:id/claim`, `POST /tasks/:id/complete`
 
 ### Files modified
 

@@ -26,7 +26,7 @@ that makes a stuck permission prompt visible instead of looking like a slow agen
 
 - `packages/web/src/features/chat/AgentControls.tsx` — Interrupt, Kill, and the model chip
 - `packages/web/src/features/chat/BlockedBanner.tsx` — permission-request banner naming what the agent asked for
-- `packages/server/src/events/handlers/permission.ts` — records a PermissionRequest, marks the session blocked, clears it when the session moves on
+- `packages/server/src/features/permissions/handlers/permission.ts` — records a PermissionRequest, marks the session blocked, clears it when the session moves on
 - `packages/shared/src/permissions.ts` — the blocked-state record
 
 ### Files modified

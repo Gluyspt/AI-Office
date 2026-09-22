@@ -21,12 +21,12 @@ import type { AddressInfo } from "node:net";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import { WebSocket } from "ws";
-import { buildApp } from "../app.ts";
-import { loadServerConfig, loadTlsConfig } from "../config.ts";
-import { pool } from "../db/pool.ts";
-import { ingestEmitter, ingestHookPayload } from "../events/ingest.ts";
-import type { StoredEventRow } from "../events/ingest.ts";
-import { __resetForTests, subscriberCount } from "../events/bus.ts";
+import { buildApp } from "../../../core/app.ts";
+import { loadServerConfig, loadTlsConfig } from "../../../core/config.ts";
+import { pool } from "../../../core/db/pool.ts";
+import { ingestEmitter, ingestHookPayload } from "../../events/ingest.ts";
+import type { StoredEventRow } from "../../events/ingest.ts";
+import { __resetForTests, subscriberCount } from "../../events/bus.ts";
 
 const certPem = readFileSync(loadTlsConfig().certPath);
 

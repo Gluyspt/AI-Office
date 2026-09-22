@@ -128,7 +128,7 @@ export function subscriberCount(): number {
  * per-test isolation), so without this, a subscription left over from one
  * test in bus.test.ts would still be live (and still receive events) in the
  * next. Mirrors the test seams ticket 005 already established — e.g.
- * `loadHandlers(dir)`'s directory override in handlers/loader.ts — rather
+ * `loadHandlers(dir)`'s directory override in handler-loader.ts — rather
  * than inventing a new pattern.
  */
 export function __resetForTests(): void {

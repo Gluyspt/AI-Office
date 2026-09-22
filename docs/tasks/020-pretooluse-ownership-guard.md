@@ -29,10 +29,10 @@ It is also the ticket most exposed to ticket 002's finding, since the design's b
 
 - `hooks/pretooluse-guard.sh` — the guard script: read the payload, ask the orchestrator with a short timeout, exit 2 with feedback on refusal, buffer to disk on failure. Read-only, owned by `office`, mode 755, per the design
 - `config/hooks/fragments/pretooluse-guard.json` — the hook entry, merged by ticket 009's provisioner
-- `packages/server/src/routes/guard.ts` — `POST /guard/check` and `POST /guard/flush`
-- `packages/server/src/locks/guard-check.ts` — decision logic over ticket 015's registry, plus the heartbeat refresh
-- `packages/server/src/locks/unguarded-edits.ts` — ingest a flushed buffer, check retroactively whether any unguarded edit touched a file owned by a different active task, flag those tasks for review
-- `packages/server/src/events/handlers/tool.ts` — records tool events and refreshes the lock heartbeat
+- `packages/server/src/features/locks/routes/guard.ts` — `POST /guard/check` and `POST /guard/flush`
+- `packages/server/src/features/locks/guard-check.ts` — decision logic over ticket 015's registry, plus the heartbeat refresh
+- `packages/server/src/features/locks/unguarded-edits.ts` — ingest a flushed buffer, check retroactively whether any unguarded edit touched a file owned by a different active task, flag those tasks for review
+- `packages/server/src/features/locks/handlers/tool.ts` — records tool events and refreshes the lock heartbeat
 - `db/migrations/0010_unguarded_edits.sql` — the unguarded-edit log and the review flag on tasks
 
 ### Files modified

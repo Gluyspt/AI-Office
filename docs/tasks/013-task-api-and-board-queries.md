@@ -24,8 +24,8 @@ honest and makes the board cheap to re-render on every WebSocket event.
 
 ### Files created
 
-- `packages/server/src/tasks/repo.ts` — persistence for tasks: create, read, update fields, list; plus the board read model that groups by column and attaches the pipeline chip
-- `packages/server/src/routes/tasks.ts` — `POST /tasks`, `GET /tasks/:id`, `PATCH /tasks/:id`, `GET /tasks`, `GET /board`
+- `packages/server/src/features/tasks/repo.ts` — persistence for tasks: create, read, update fields, list; plus the board read model that groups by column and attaches the pipeline chip
+- `packages/server/src/features/tasks/routes/tasks.ts` — `POST /tasks`, `GET /tasks/:id`, `PATCH /tasks/:id`, `GET /tasks`, `GET /board`
 
 ### Files modified
 

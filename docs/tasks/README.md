@@ -14,14 +14,29 @@ The design says steps 1–3 carry the risk: if the chat bridge doesn't work, not
 
 | Convention | Established in | Lets a later ticket |
 | --- | --- | --- |
-| Server routes autoloaded from `packages/server/src/routes/` | 005 | add an endpoint without editing a route registry |
-| Event handlers collected from `packages/server/src/events/handlers/` | 005 | add per-event behaviour without editing the dispatcher |
+| Server routes autoloaded from `packages/server/src/features/*/routes/` | 005 | add an endpoint without editing a route registry |
+| Event handlers collected from `packages/server/src/features/*/handlers/` | 005 | add per-event behaviour without editing the dispatcher |
 | Hook config merged from `config/hooks/fragments/` | 009 | add a hook entry without editing the settings template |
 | Numbered SQL files in `db/migrations/` | 004 | add a table without editing a schema file |
 | UI overlays collected by `import.meta.glob` from `src/features/*/overlay.tsx` | 022 | add a slide-in panel without editing the app shell |
 | File-based routes in `packages/web/src/routes/` | 022 | add a page without editing a route table |
 
-**Manifest exception.** Dependency additions to an existing `package.json`, appended lines in `.env.example`, and a new `loadXConfig()` section appended to `packages/server/src/config.ts`, are append-only and are *not* part of any ticket's file scope. Every other file is owned. Editing an existing config section, the shared readers, or `ConfigError` still belongs to ticket 004.
+**Layout: one folder per feature, plus `core/`.** The server is organised as vertical slices —
+`packages/server/src/features/<name>/` holds that feature's modules, its `routes/` and its
+`handlers/` together — over a `packages/server/src/core/` holding only what every feature calls:
+the Fastify app, the config reader, the database pool. `deploy/` follows the same shape, one
+directory per deployment concern (`dev/`, `host/`, `vps-sim/`).
+
+The features in steps 1–3 are `events`, `realtime`, `orchestrator`, `tasks`, `locks`, `chat`,
+`planning` and `permissions`. A ticket adding a genuinely new concern adds a folder; it does not
+need permission from this file to do so.
+
+**The autoloaded unit is the file, not the feature.** This matters for one-file-one-ticket: four
+tickets add endpoints to `features/tasks/` (013 tasks, 014 dependencies, 017 actions, 032
+advance), so a single `routes.ts` per feature would force them onto one file. Each owns its own
+file inside the shared `routes/` directory instead.
+
+**Manifest exception.** Dependency additions to an existing `package.json`, appended lines in `.env.example`, and a new `loadXConfig()` section appended to `packages/server/src/core/config.ts`, are append-only and are *not* part of any ticket's file scope. Every other file is owned. Editing an existing config section, the shared readers, or `ConfigError` still belongs to ticket 004.
 
 **Open questions are not TODOs.** Where the design leaves something undecided, the ticket says so and names the decision rather than inventing an answer. Several open questions are the design's own, carried forward to the ticket where they first bite.
 
@@ -167,7 +182,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 
 | Path | Ticket |
 | --- | :-: |
-| `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `.gitignore`, `.editorconfig`, `.env.example`, `docker-compose.dev.yml`, `vitest.config.ts`, `README.md` | 001 |
+| `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `.gitignore`, `.editorconfig`, `.env.example`, `deploy/dev/compose.yml`, `vitest.config.ts`, `README.md` | 001 |
 | `agents/management-lead.md`, `agents/dev-lead.md` | 009 |
 | `agents/management-lead.planning.md` | 019 |
 | `config/hooks/base.settings.json`, `config/hooks/fragments/.gitkeep` | 009 |
@@ -184,7 +199,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `db/migrations/0010_unguarded_edits.sql` | 020 |
 | `db/migrations/0011_pause.sql` | 028 |
 | `db/migrations/0012_gate_bypass.sql` | 032 |
-| `deploy/sudoers.d/office` | 007 |
+| `deploy/host/sudoers.d/office` | 007 |
 | `docs/spikes/001-hook-payloads.md` | 002 |
 | `docs/spikes/002-tmux-tui-control.md` | 003 |
 | `docs/spikes/003-mcp-wiring.md` | 016 |
@@ -206,23 +221,23 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `packages/shared/src/batches.ts` | 019 |
 | `packages/shared/src/permissions.ts` | 027 |
 | `packages/shared/src/control.ts` | 028 |
-| `packages/server/package.json`, `packages/server/tsconfig.json`, `packages/server/src/config.ts`, `packages/server/src/db/pool.ts`, `packages/server/src/db/migrate.ts` | 004 |
-| `packages/server/src/app.ts`, `packages/server/src/server.ts`, `packages/server/src/routes/events.ts`, `packages/server/src/events/ingest.ts`, `packages/server/src/events/handlers/loader.ts` | 005 |
-| `packages/server/src/events/bus.ts`, `packages/server/src/routes/ws.ts` | 006 |
-| `packages/server/src/orchestrator/tmux.ts`, `naming.ts`, `shell-quote.ts` | 007 |
-| `packages/server/src/orchestrator/sessions.ts`, `packages/server/src/routes/sessions.ts` | 008 |
-| `packages/server/src/orchestrator/provision.ts` | 009 |
-| `packages/server/src/events/handlers/reply.ts`, `packages/server/src/chat/transcript.ts`, `packages/server/src/chat/conversations.ts`, `packages/server/src/routes/chat.ts` | 010 |
-| `packages/server/src/tasks/states.ts`, `packages/server/src/tasks/model.ts` | 012 |
-| `packages/server/src/tasks/repo.ts`, `packages/server/src/routes/tasks.ts` | 013 |
-| `packages/server/src/tasks/dependencies.ts`, `packages/server/src/tasks/scope-ordering.ts`, `packages/server/src/routes/task-dependencies.ts` | 014 |
-| `packages/server/src/locks/registry.ts`, `overlap.ts`, `packages/server/src/routes/locks.ts` | 015 |
-| `packages/server/src/tasks/claim.ts`, `complete.ts`, `packages/server/src/routes/task-actions.ts` | 017 |
-| `packages/server/src/orchestrator/caps.ts`, `packages/server/src/orchestrator/spawn-queue.ts` | 018 |
-| `packages/server/src/planning/batches.ts`, `promote.ts`, `readonly-guard.ts`, `packages/server/src/routes/batches.ts` | 019 |
-| `packages/server/src/routes/guard.ts`, `packages/server/src/locks/guard-check.ts`, `packages/server/src/locks/unguarded-edits.ts`, `packages/server/src/events/handlers/tool.ts` | 020 |
-| `packages/server/src/events/handlers/permission.ts` | 027 |
-| `packages/server/src/orchestrator/pause.ts`, `resume.ts`, `packages/server/src/routes/control.ts` | 028 |
+| `packages/server/package.json`, `packages/server/tsconfig.json`, `packages/server/src/core/config.ts`, `packages/server/src/core/db/pool.ts`, `packages/server/src/core/db/migrate.ts` | 004 |
+| `packages/server/src/core/app.ts`, `packages/server/src/core/server.ts`, `packages/server/src/features/events/routes/events.ts`, `packages/server/src/features/events/ingest.ts`, `packages/server/src/features/events/handler-loader.ts` | 005 |
+| `packages/server/src/features/events/bus.ts`, `packages/server/src/features/realtime/routes/ws.ts` | 006 |
+| `packages/server/src/features/orchestrator/tmux.ts`, `naming.ts`, `shell-quote.ts` | 007 |
+| `packages/server/src/features/orchestrator/sessions.ts`, `packages/server/src/features/orchestrator/routes/sessions.ts` | 008 |
+| `packages/server/src/features/orchestrator/provision.ts` | 009 |
+| `packages/server/src/features/chat/handlers/reply.ts`, `packages/server/src/features/chat/transcript.ts`, `packages/server/src/features/chat/conversations.ts`, `packages/server/src/features/chat/routes/chat.ts` | 010 |
+| `packages/server/src/features/tasks/states.ts`, `packages/server/src/features/tasks/model.ts` | 012 |
+| `packages/server/src/features/tasks/repo.ts`, `packages/server/src/features/tasks/routes/tasks.ts` | 013 |
+| `packages/server/src/features/tasks/dependencies.ts`, `packages/server/src/features/tasks/scope-ordering.ts`, `packages/server/src/features/tasks/routes/dependencies.ts` | 014 |
+| `packages/server/src/features/locks/registry.ts`, `overlap.ts`, `packages/server/src/features/locks/routes/locks.ts` | 015 |
+| `packages/server/src/features/tasks/claim.ts`, `complete.ts`, `packages/server/src/features/tasks/routes/actions.ts` | 017 |
+| `packages/server/src/features/orchestrator/caps.ts`, `packages/server/src/features/orchestrator/spawn-queue.ts` | 018 |
+| `packages/server/src/features/planning/batches.ts`, `promote.ts`, `readonly-guard.ts`, `packages/server/src/features/planning/routes/batches.ts` | 019 |
+| `packages/server/src/features/locks/routes/guard.ts`, `packages/server/src/features/locks/guard-check.ts`, `packages/server/src/features/locks/unguarded-edits.ts`, `packages/server/src/features/locks/handlers/tool.ts` | 020 |
+| `packages/server/src/features/permissions/handlers/permission.ts` | 027 |
+| `packages/server/src/features/orchestrator/pause.ts`, `resume.ts`, `packages/server/src/features/orchestrator/routes/control.ts` | 028 |
 | `packages/mcp-tasks/` (package.json, tsconfig.json, src/index.ts, src/office-client.ts, src/tools/claim-task.ts, src/tools/complete-task.ts) | 017 |
 | `packages/mcp-session/` (package.json, tsconfig.json, src/index.ts, src/office-client.ts, src/tools/start-session.ts, src/tools/message-session.ts) | 018 |
 | `packages/web/package.json`, `tsconfig.json`, `vite.config.ts`, `index.html`, `src/main.tsx`, `src/routes/__root.tsx`, `src/routes/index.tsx`, `src/lib/api.ts`, `src/lib/ws.ts`, `src/lib/overlays.tsx`, `src/lib/SystemStatus.tsx`, `src/styles/global.css` | 022 |
@@ -233,7 +248,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `packages/web/src/features/chat/AgentControls.tsx`, `BlockedBanner.tsx` | 027 |
 | `packages/web/src/routes/control.tsx`, `src/features/control/overlay.tsx`, `StopControls.tsx`, `ConfirmStopDialog.tsx`, `SpawnQueue.tsx`, `UnguardedEdits.tsx`, `useControl.ts`, `control.css` | 029 |
 | `packages/web/src/routes/tasks.$id.tsx`, `src/features/task-detail/TaskDetail.tsx`, `StateHistory.tsx`, `useTask.ts`, `task-detail.css` | 031 |
-| `packages/server/src/tasks/advance-no-gate.ts`, `packages/server/src/routes/task-advance.ts`, `packages/web/src/features/board/AdvanceNoGate.tsx` | 032 |
+| `packages/server/src/features/tasks/advance-no-gate.ts`, `packages/server/src/features/tasks/routes/advance.ts`, `packages/web/src/features/board/AdvanceNoGate.tsx` | 032 |
 | `tests/spine/harness.ts`, `tests/spine/spine.e2e.test.ts`, `tests/README.md` | 011 |
 | `tests/coordination/claim-complete.test.ts`, `dependencies.test.ts`, `guard.test.ts`, `planning.test.ts` | 021 |
 | `tests/ui/board.test.tsx`, `tests/ui/chat.test.tsx` | 030 |

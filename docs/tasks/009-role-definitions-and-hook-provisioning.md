@@ -31,7 +31,7 @@ dropping a file into `config/hooks/fragments/`, never by editing a shared settin
 - `agents/dev-lead.md` — role definition: plans, splits, assigns, starts agents, owns merges for its department
 - `config/hooks/base.settings.json` — the eight HTTP hook entries from the design
 - `config/hooks/fragments/.gitkeep` — the fragment directory, with the convention documented in the file
-- `packages/server/src/orchestrator/provision.ts` — renders `base.settings.json` merged with every fragment into a user's `CLAUDE_CONFIG_DIR`, and installs the agent definitions
+- `packages/server/src/features/orchestrator/provision.ts` — renders `base.settings.json` merged with every fragment into a user's `CLAUDE_CONFIG_DIR`, and installs the agent definitions
 - `scripts/provision-user.sh` — one-shot host script that runs provisioning for a given Linux user
 
 ### Files modified

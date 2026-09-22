@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { TASK_STATES, type TaskState } from "@office/shared/tasks";
 import { asProjectId, type ProjectId, type TaskId } from "@office/shared/ids";
-import { pool, withTransaction } from "../db/pool.ts";
+import { pool, withTransaction } from "../../core/db/pool.ts";
 import { createTask } from "./model.ts";
 import {
   ConcurrentTransitionError,
@@ -28,7 +28,7 @@ import {
   transition,
 } from "./states.ts";
 
-const serverSrc = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const serverSrc = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const repoRoot = path.resolve(serverSrc, "../../..");
 
 // --- The expected edge set, written out by hand -------------------------------
@@ -520,7 +520,7 @@ describe("nothing else can change tasks.state", () => {
           continue;
         }
         if (!entry.name.endsWith(".ts")) continue;
-        if (full === path.join(serverSrc, "tasks", "states.ts")) continue;
+        if (full === path.join(serverSrc, "features", "tasks", "states.ts")) continue;
         if (entry.name.endsWith(".test.ts")) continue;
         const source = await readFile(full, "utf8");
         if (/update\s+tasks\s+set[^;`]*\bstate\s*=/is.test(source)) {

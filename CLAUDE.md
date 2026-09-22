@@ -64,15 +64,15 @@ it hold:
 
 | Convention | Set by | Lets a later ticket |
 | --- | --- | --- |
-| Server routes autoloaded from `packages/server/src/routes/` | 005 | add an endpoint, no registry edit |
-| Event handlers collected from `packages/server/src/events/handlers/` | 005 | add per-event behaviour, no dispatcher edit |
+| Server routes autoloaded from `packages/server/src/features/*/routes/` | 005 | add an endpoint, no registry edit |
+| Event handlers collected from `packages/server/src/features/*/handlers/` | 005 | add per-event behaviour, no dispatcher edit |
 | Hook config merged from `config/hooks/fragments/` | 009 | add a hook entry, no template edit |
 | Numbered SQL files in `db/migrations/` | 004 | add a table, no schema file edit |
 | UI overlays collected by `import.meta.glob` from `src/features/*/overlay.tsx` | 022 | add a panel, no shell edit |
 | File-based routes in `packages/web/src/routes/` | 022 | add a page, no route table edit |
 
 **Manifest exception:** dependency additions to an existing `package.json`, appended lines in
-`.env.example`, and **a new `loadXConfig()` section appended to `packages/server/src/config.ts`**, are
+`.env.example`, and **a new `loadXConfig()` section appended to `packages/server/src/core/config.ts`**, are
 append-only and outside any ticket's file scope.
 
 The config case was added after ticket 004 shipped: `config.ts` is owned by 004 permanently, but

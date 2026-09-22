@@ -24,8 +24,8 @@ Ticket 018 wraps the same calls as MCP tools for leads; the web UI in step 3 cal
 
 ### Files created
 
-- `packages/server/src/orchestrator/sessions.ts` — `startSession`, `messageSession`, `interruptSession`, `killSession`, `getSession`, `listSessions`; owns the session state machine and the message queue if ticket 003 showed tmux cannot be trusted with it
-- `packages/server/src/routes/sessions.ts` — `POST /sessions`, `POST /sessions/:id/message`, `POST /sessions/:id/interrupt`, `DELETE /sessions/:id`, `GET /sessions`, `GET /sessions/:id`
+- `packages/server/src/features/orchestrator/sessions.ts` — `startSession`, `messageSession`, `interruptSession`, `killSession`, `getSession`, `listSessions`; owns the session state machine and the message queue if ticket 003 showed tmux cannot be trusted with it
+- `packages/server/src/features/orchestrator/routes/sessions.ts` — `POST /sessions`, `POST /sessions/:id/message`, `POST /sessions/:id/interrupt`, `DELETE /sessions/:id`, `GET /sessions`, `GET /sessions/:id`
 - `packages/shared/src/sessions.ts` — session record, role enum, backend enum, status enum
 - `db/migrations/0003_sessions.sql` — `sessions` table: id, project_id, tmux_name, role, dept, owner, backend, model, model_reason, status, started_at, ended_at, claude_session_id
 

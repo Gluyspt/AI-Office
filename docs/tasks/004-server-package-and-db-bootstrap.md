@@ -26,9 +26,9 @@ convention must land before any of them.
 
 - `packages/server/package.json` — name `@office/server`
 - `packages/server/tsconfig.json`
-- `packages/server/src/config.ts` — env parsing with a typed schema; fails loudly at startup on a missing variable
-- `packages/server/src/db/pool.ts` — `pg` pool, one exported `query` and one `withTransaction` helper
-- `packages/server/src/db/migrate.ts` — runner: reads `db/migrations/*.sql` in filename order, applies unapplied ones in a transaction, records them
+- `packages/server/src/core/config.ts` — env parsing with a typed schema; fails loudly at startup on a missing variable
+- `packages/server/src/core/db/pool.ts` — `pg` pool, one exported `query` and one `withTransaction` helper
+- `packages/server/src/core/db/migrate.ts` — runner: reads `db/migrations/*.sql` in filename order, applies unapplied ones in a transaction, records them
 - `db/migrations/0001_core.sql` — `schema_migrations`, and `projects` (id, name, slug, repo_url, status, created_at)
 
 ### Files modified

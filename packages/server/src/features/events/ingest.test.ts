@@ -6,17 +6,21 @@
 // `bbbbbbbb-...` ones the orchestrator passed in) are kept exactly as
 // captured.
 import { randomUUID } from "node:crypto";
-import { writeFile, rm } from "node:fs/promises";
+import { writeFile, rm, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { pool } from "../db/pool.ts";
+import { pool } from "../../core/db/pool.ts";
 import pg from "pg";
-import { loadDatabaseConfig } from "../config.ts";
+import { loadDatabaseConfig } from "../../core/config.ts";
 import type { StoredEventRow } from "./ingest.ts";
 import { ingestHookPayload, listEvents, validateHookBody } from "./ingest.ts";
 
-const handlersDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "handlers");
+// src/features/events/ -> src/features/ ; handlers are collected from
+// every feature's handlers/ directory, so the test plants a whole new one.
+const featuresDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const tempFeatureDir = path.join(featuresDir, "__temp_handler_extension_feature__");
+const handlersDir = path.join(tempFeatureDir, "handlers");
 
 // A fixed placeholder standing in for every `<uuid>` the spike redacted,
 // and for `<user>` / `<uid>` in redacted paths. Not a captured value —
@@ -221,8 +225,18 @@ describe("ingestHookPayload — round trips every captured event type", () => {
       // "full payload intact" acceptance criterion.
       expect(stored.payload).toEqual(payload);
 
-      const [fetched] = await listEvents({ projectId: null, since: null, limit: 1 });
-      expect(fetched?.id).toBe(stored.id);
+      // Read back through the real list path — but find THIS row rather
+      // than assuming it is the most recent event in the table. These
+      // payloads carry no project_id and listEvents filters only on
+      // project_id/since, so `limit: 1` asks for "the newest event
+      // globally"; app.test.ts, bus.test.ts and ws.integration.test.ts all
+      // insert into `events` from parallel workers, and whichever one
+      // committed last would win. The race predates the feature-folder
+      // layout — that change only altered ingest's timing enough to make it
+      // fire most runs instead of rarely.
+      const recent = await listEvents({ projectId: null, since: null, limit: 200 });
+      const fetched = recent.find((row) => row.id === stored.id);
+      expect(fetched, `event ${stored.id} should be readable back`).toBeTruthy();
       expect(fetched?.payload).toEqual(payload);
     });
   }
@@ -412,10 +426,10 @@ describe("handler autoload extension point", () => {
   });
 
   afterEach(async () => {
-    await rm(tempHandlerPath, { force: true });
+    await rm(tempFeatureDir, { force: true, recursive: true });
   });
 
-  it("runs a handler dropped into src/events/handlers/ with no edit to ingest.ts or loader.ts", async () => {
+  it("runs a handler dropped into a new src/features/*/handlers/ with no edit to ingest.ts or handler-loader.ts", async () => {
     const moduleSource = `
 export default {
   eventType: "TempExtensionPointEvent",
@@ -424,6 +438,7 @@ export default {
   },
 };
 `;
+    await mkdir(handlersDir, { recursive: true });
     await writeFile(tempHandlerPath, moduleSource, "utf8");
 
     const sessionId = randomUUID();

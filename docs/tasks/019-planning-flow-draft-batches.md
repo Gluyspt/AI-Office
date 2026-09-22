@@ -26,10 +26,10 @@ the orchestrator enforces this** rather than trusting the prompt.
 ### Files created
 
 - `db/migrations/0009_batches.sql` — `batches`: id, project_id, title, state (draft, promoted, discarded), created_by, created_at; plus `batch_id` on tasks
-- `packages/server/src/planning/batches.ts` — create, add and remove tasks, edit before promotion, revalidate on mutation
-- `packages/server/src/planning/promote.ts` — the Start working transition: validate the whole batch, move draft to pending, spawn the department leads, let them claim
-- `packages/server/src/planning/readonly-guard.ts` — the planning-mode restriction on a Management session
-- `packages/server/src/routes/batches.ts` — `POST /batches`, `GET /batches`, `PATCH /batches/:id`, `POST /batches/:id/promote`, `DELETE /batches/:id`
+- `packages/server/src/features/planning/batches.ts` — create, add and remove tasks, edit before promotion, revalidate on mutation
+- `packages/server/src/features/planning/promote.ts` — the Start working transition: validate the whole batch, move draft to pending, spawn the department leads, let them claim
+- `packages/server/src/features/planning/readonly-guard.ts` — the planning-mode restriction on a Management session
+- `packages/server/src/features/planning/routes/batches.ts` — `POST /batches`, `GET /batches`, `PATCH /batches/:id`, `POST /batches/:id/promote`, `DELETE /batches/:id`
 - `packages/shared/src/batches.ts`
 - `agents/management-lead.planning.md` — the planning brief and the breakdown format the agent must produce
 

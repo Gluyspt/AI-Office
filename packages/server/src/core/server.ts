@@ -12,7 +12,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "./app.ts";
 import { loadServerConfig } from "./config.ts";
 import { pool } from "./db/pool.ts";
-import { recordSystemEvent } from "./events/ingest.ts";
+import { recordSystemEvent } from "../features/events/ingest.ts";
 
 const LOOPBACK_HOST = "127.0.0.1";
 

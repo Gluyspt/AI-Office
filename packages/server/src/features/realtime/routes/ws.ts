@@ -27,9 +27,9 @@ import {
   type EventFrame,
   type PingFrame,
 } from "@office/shared/ws";
-import { subscribe, type SubscriptionFilter } from "../events/bus.ts";
-import { loadWsConfig } from "../config.ts";
-import type { StoredEventRow } from "../events/ingest.ts";
+import { subscribe, type SubscriptionFilter } from "../../events/bus.ts";
+import { loadWsConfig } from "../../../core/config.ts";
+import type { StoredEventRow } from "../../events/ingest.ts";
 
 // Caches the JSON encoding of an event frame per StoredEventRow, so N
 // subscribers matching the same publish (this ticket's "three clients

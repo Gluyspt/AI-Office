@@ -2,7 +2,7 @@
 // Fastify's inject() (no real socket/TLS needed to exercise route logic),
 // and the route-autoload extension point works with no edit to app.ts.
 import { randomUUID } from "node:crypto";
-import { writeFile, rm } from "node:fs/promises";
+import { writeFile, rm, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
@@ -12,7 +12,7 @@ import { buildApp } from "./app.ts";
 import { loadServerConfig } from "./config.ts";
 import { pool } from "./db/pool.ts";
 
-const routesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "routes");
+const featuresDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "features");
 
 function firstToken(): string {
   const { hookIngestTokens } = loadServerConfig();
@@ -92,7 +92,12 @@ describe("GET /events", () => {
       payload: JSON.stringify({ hook_event_name: "Stop", session_id: sessionId }),
       headers: { "content-type": "application/json" },
     });
-    const response = await app.inject({ method: "GET", url: "/events?limit=5" });
+    // A wide limit, not because the endpoint needs one, but because
+    // ingest.test.ts, bus.test.ts and ws.integration.test.ts insert into
+    // `events` from parallel workers. With limit=5 a burst from another
+    // file pushes this row out of the window and the assertion fails on a
+    // correct server.
+    const response = await app.inject({ method: "GET", url: "/events?limit=200" });
     expect(response.statusCode).toBe(200);
     const rows = JSON.parse(response.body) as Array<{ sessionId: string }>;
     expect(rows.some((r) => r.sessionId === sessionId)).toBe(true);
@@ -101,20 +106,26 @@ describe("GET /events", () => {
 });
 
 describe("route autoload extension point", () => {
-  const tempRoutePath = path.join(routesDir, "__temp_extension_point_test_route__.ts");
+  // Writes a whole new FEATURE folder, not just a file in an existing one:
+  // the convention is that a ticket adds src/features/<name>/routes/<file>.ts
+  // and app.ts never changes, so the test has to exercise both halves.
+  const tempFeatureDir = path.join(featuresDir, "__temp_route_extension_feature__");
+  const tempRouteDir = path.join(tempFeatureDir, "routes");
+  const tempRoutePath = path.join(tempRouteDir, "__temp_extension_point_test_route__.ts");
   let app: FastifyInstance;
 
   afterEach(async () => {
     if (app) await app.close();
-    await rm(tempRoutePath, { force: true });
+    await rm(tempFeatureDir, { force: true, recursive: true });
   });
 
-  it("serves a route dropped into src/routes/ with no edit to app.ts", async () => {
+  it("serves a route dropped into a new src/features/*/routes/ with no edit to app.ts", async () => {
     const moduleSource = `
 export default async function tempRoute(app) {
   app.get("/__temp_extension_point_test_route__", async () => ({ marker: "extension-point" }));
 }
 `;
+    await mkdir(tempRouteDir, { recursive: true });
     await writeFile(tempRoutePath, moduleSource, "utf8");
 
     app = await buildApp();

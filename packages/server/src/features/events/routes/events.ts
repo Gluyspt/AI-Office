@@ -6,8 +6,8 @@
 // this one.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { EVENT_ENDPOINTS } from "@office/shared/events";
-import { loadServerConfig } from "../config.ts";
-import { ingestHookPayload, listEvents } from "../events/ingest.ts";
+import { loadServerConfig } from "../../../core/config.ts";
+import { ingestHookPayload, listEvents } from "../ingest.ts";
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;

@@ -1,21 +1,27 @@
-# VPS simulator. Separate from docker-compose.dev.yml (ticket 001, Postgres
+# VPS simulator. Separate from deploy/dev/compose.yml (ticket 001, Postgres
 # for local dev) because this is a different job: a Linux host with the
 # agent accounts, the scoped sudoers rule and tmux, for the checks that
 # tickets 001-007 defer to "the VPS" but that do not actually need one.
 #
-#   docker compose -f docker-compose.vps-sim.yml build
-#   docker compose -f docker-compose.vps-sim.yml run --rm vps-sim
+#   docker compose -f deploy/vps-sim/compose.yml build
+#   docker compose -f deploy/vps-sim/compose.yml run --rm vps-sim
 #
 # Then inside:
 #   ./spikes/tmux/drive-session.sh doctor
 #   ./spikes/tmux/drive-session.sh sudo-parity
 #
-# See deploy/README.md for what this proves and what it cannot.
+# See deploy/vps-sim/README.md for what this proves and what it cannot.
+#
+# Pinned for the same reason deploy/dev/compose.yml is: Compose derives the
+# project name from the directory holding the file, so this would silently
+# become project "vps-sim" after the move.
+name: ai-office-vps-sim
+
 services:
   vps-sim:
     build:
-      context: .
-      dockerfile: deploy/Dockerfile.vps-sim
+      context: ../..
+      dockerfile: deploy/vps-sim/Dockerfile
     # tmux needs a TTY to attach a session to, and the harness reads panes.
     tty: true
     stdin_open: true
@@ -23,12 +29,12 @@ services:
       # The repo, read-only: the harness is run from here, and nothing in
       # the container should be able to modify the orchestrator source. The
       # harness writes only under SPIKE_TMPDIR, never into the repo.
-      - .:/srv/office/orchestrator:ro
+      - ../..:/srv/office/orchestrator:ro
       # Scratch for the harness's rundir. A named volume, not a bind mount,
       # so nothing untracked appears in the repo (.gitignore belongs to
       # ticket 001). Results do not need it: every subcommand writes its TSV
       # to stdout, so capture a run the way the spike doc does --
-      #   docker compose -f docker-compose.vps-sim.yml run --rm vps-sim \
+      #   docker compose -f deploy/vps-sim/compose.yml run --rm vps-sim \
       #     ./spikes/tmux/drive-session.sh all --trials 20 > 003-results.tsv
       - vps-sim-scratch:/srv/office/out
     environment:

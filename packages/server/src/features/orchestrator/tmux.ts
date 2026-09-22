@@ -59,7 +59,7 @@
 //    must get it from hook events (010), not from this pane.
 
 import { spawn } from "node:child_process";
-import { loadTmuxConfig } from "../config.ts";
+import { loadTmuxConfig } from "../../core/config.ts";
 import { isOfficeSessionName, isValidSessionName } from "./naming.ts";
 import {
   capturePaneArgs,

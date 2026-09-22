@@ -13,8 +13,11 @@ import { pool, withTransaction } from "./pool.ts";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
-// packages/server/src/db -> repo root is four levels up.
-export const migrationsDir = path.resolve(moduleDir, "../../../../db/migrations");
+// packages/server/src/core/db -> repo root is five levels up. This count is
+// tied to this file's depth — it was four before db/ moved under src/core/,
+// and getting it wrong fails as ENOENT on a directory one level short of
+// the repo root, which reads like a missing db/ rather than a bad path.
+export const migrationsDir = path.resolve(moduleDir, "../../../../../db/migrations");
 
 async function schemaMigrationsTableExists(): Promise<boolean> {
   const result = await pool.query<{ exists: boolean }>(

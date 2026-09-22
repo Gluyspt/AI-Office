@@ -1,9 +1,17 @@
 // The Fastify app: builds an HTTPS-only instance (every endpoint in this
 // system is https, loopback included — see docs/tasks/README.md "Decisions
-// made") and autoloads every route module under src/routes/. Adding an
-// endpoint means adding a file there; this file never needs an edit for it
-// — see README.md's "Extension points" and the file ownership map's note
-// that this convention is established here.
+// made") and autoloads every route module under src/features/*/routes/.
+// Adding an endpoint means adding a file to a feature's routes/ directory,
+// or adding a whole new feature folder; this file never needs an edit for
+// it — see README.md's "Extension points" and the file ownership map.
+//
+// Why a directory per feature rather than one flat src/routes/: several
+// tickets add endpoints to the same feature area (013 tasks, 014
+// dependencies, 017 actions, 032 advance are all "tasks"), and the repo's
+// one-file-one-ticket rule needs each of them to own a separate file. A
+// single routes.ts per feature would force four tickets onto one file, so
+// the unit that is autoloaded stays the FILE, and the feature folder is
+// just where it lives.
 //
 // This module only builds the app (readFileSync'ing the TLS material,
 // registering routes). It does not listen — that's server.ts, so a test can
@@ -16,7 +24,7 @@ import Fastify, { type FastifyInstance, type FastifyPluginAsync } from "fastify"
 import { loadTlsConfig } from "./config.ts";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-const routesDir = path.join(moduleDir, "routes");
+const featuresDir = path.join(moduleDir, "..", "features");
 
 function isRouteModuleFile(name: string): boolean {
   if (!name.endsWith(".ts") && !name.endsWith(".js")) return false;
@@ -25,30 +33,47 @@ function isRouteModuleFile(name: string): boolean {
   return true;
 }
 
-async function autoloadRoutes(app: FastifyInstance, dir: string): Promise<void> {
-  let entries: string[];
+/** Every `<feature>/routes/` directory under `dir`, in feature-name order,
+ *  so route registration is deterministic across machines. */
+async function routeDirs(dir: string): Promise<string[]> {
+  let features: Awaited<ReturnType<typeof readdir>> | string[];
   try {
-    entries = await readdir(dir);
+    features = await readdir(dir);
   } catch {
-    return;
+    return [];
   }
-  const files = entries.filter(isRouteModuleFile).sort();
-  for (const file of files) {
-    const mod = (await import(pathToFileURL(path.join(dir, file)).href)) as {
-      default?: FastifyPluginAsync;
-    };
-    if (typeof mod.default !== "function") {
-      throw new Error(`route module ${file} must have a default export function(app)`);
+  return [...features].sort().map((feature) => path.join(dir, feature, "routes"));
+}
+
+async function autoloadRoutes(app: FastifyInstance, dir: string): Promise<void> {
+  for (const routesDir of await routeDirs(dir)) {
+    let entries: string[];
+    try {
+      entries = await readdir(routesDir);
+    } catch {
+      // A feature with no routes/ directory is normal — orchestrator and
+      // tasks are libraries other features call, not HTTP surfaces.
+      continue;
     }
-    await app.register(mod.default);
+    const files = entries.filter(isRouteModuleFile).sort();
+    for (const file of files) {
+      const mod = (await import(pathToFileURL(path.join(routesDir, file)).href)) as {
+        default?: FastifyPluginAsync;
+      };
+      if (typeof mod.default !== "function") {
+        throw new Error(
+          `route module ${path.relative(dir, path.join(routesDir, file))} must have a default export function(app)`,
+        );
+      }
+      await app.register(mod.default);
+    }
   }
 }
 
 export interface BuildAppOptions {
-  /** Override for tests that want to autoload a scratch routes directory
-   * instead of (or in addition to needing) the real one. Defaults to
-   * src/routes/ next to this file. */
-  readonly routesDir?: string;
+  /** Override for tests that want to autoload a scratch features tree
+   * instead of the real one. Defaults to src/features/ beside src/core/. */
+  readonly featuresDir?: string;
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -80,7 +105,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   app.addContentTypeParser("application/json", { parseAs: "string" }, passthrough);
   app.addContentTypeParser("*", { parseAs: "string" }, passthrough);
 
-  await autoloadRoutes(app, options.routesDir ?? routesDir);
+  await autoloadRoutes(app, options.featuresDir ?? featuresDir);
 
   return app;
 }

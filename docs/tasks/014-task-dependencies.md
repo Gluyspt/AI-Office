@@ -25,9 +25,9 @@ design requires resuming a project's paused tasks "respecting dependencies."
 ### Files created
 
 - `db/migrations/0006_task_dependencies.sql` — `task_dependencies` (task_id, blocked_by_task_id), with a uniqueness constraint and an index in both directions
-- `packages/server/src/tasks/dependencies.ts` — add, remove, cycle detection, transitive-order queries, `isClaimable`, and `unblockDependents` called when a task is delivered
-- `packages/server/src/tasks/scope-ordering.ts` — the shared validator: is an overlap between two tasks safely ordered by a direct or transitive dependency? Called by this ticket's mutation routes and by ticket 019's batch validation
-- `packages/server/src/routes/task-dependencies.ts` — `PUT /tasks/:id/dependencies`, `GET /tasks/:id/dependencies`
+- `packages/server/src/features/tasks/dependencies.ts` — add, remove, cycle detection, transitive-order queries, `isClaimable`, and `unblockDependents` called when a task is delivered
+- `packages/server/src/features/tasks/scope-ordering.ts` — the shared validator: is an overlap between two tasks safely ordered by a direct or transitive dependency? Called by this ticket's mutation routes and by ticket 019's batch validation
+- `packages/server/src/features/tasks/routes/dependencies.ts` — `PUT /tasks/:id/dependencies`, `GET /tasks/:id/dependencies`
 
 ### Files modified
 

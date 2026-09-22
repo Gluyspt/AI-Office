@@ -17,8 +17,8 @@
 //   - "Full payload intact" is a hard acceptance criterion even though
 //     PostToolUse.tool_response can carry whole file bodies — no truncation.
 import { EventEmitter } from "node:events";
-import { query } from "../db/pool.ts";
-import { loadHandlers, type HandledEvent } from "./handlers/loader.ts";
+import { query } from "../../core/db/pool.ts";
+import { loadHandlers, type HandledEvent } from "./handler-loader.ts";
 
 // --- Validation --------------------------------------------------------------
 
@@ -320,5 +320,5 @@ export async function listEvents(params: ListEventsParams): Promise<StoredEventR
 }
 
 // Re-exported so tests (and any future ticket) can point loadHandlers at a
-// scratch directory without importing handlers/loader.ts directly.
+// scratch directory without importing handler-loader.ts directly.
 export { loadHandlers };

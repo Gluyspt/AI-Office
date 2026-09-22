@@ -28,10 +28,10 @@ written asynchronously and may lag. `last_assistant_message` is the source.
 
 ### Files created
 
-- `packages/server/src/events/handlers/reply.ts` — Stop handler: correlate to a session row, extract `last_assistant_message`, append to the conversation, publish on the bus
-- `packages/server/src/chat/transcript.ts` — append and read, ordered, with paging
-- `packages/server/src/chat/conversations.ts` — resolve or create the conversation for a session, and open a new segment when a session replaces another
-- `packages/server/src/routes/chat.ts` — `GET /conversations/:id/messages`, `GET /sessions/:id/conversation`, and `POST /conversations/:id/messages` which records the outbound human message then calls ticket 008's `messageSession`
+- `packages/server/src/features/chat/handlers/reply.ts` — Stop handler: correlate to a session row, extract `last_assistant_message`, append to the conversation, publish on the bus
+- `packages/server/src/features/chat/transcript.ts` — append and read, ordered, with paging
+- `packages/server/src/features/chat/conversations.ts` — resolve or create the conversation for a session, and open a new segment when a session replaces another
+- `packages/server/src/features/chat/routes/chat.ts` — `GET /conversations/:id/messages`, `GET /sessions/:id/conversation`, and `POST /conversations/:id/messages` which records the outbound human message then calls ticket 008's `messageSession`
 - `packages/shared/src/chat.ts` — conversation, segment and message records: direction, author, body, turn id, timestamp
 - `db/migrations/0004_conversations.sql` — `conversations` (keyed by task **or** role slot), `conversation_segments` (one per session, with its restart reason and whether a handoff was restored), and `chat_messages` carrying both `conversation_id` and `session_id`
 
