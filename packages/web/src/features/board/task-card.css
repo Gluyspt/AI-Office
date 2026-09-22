@@ -1,0 +1,224 @@
+/* Card, chips and filters. Tokens only — see global.css. */
+
+.task-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-shadow: var(--shadow);
+}
+
+/* The primary action is a real button so it is keyboard reachable and
+ * announced properly; it is styled to read as the card's title rather than
+ * as a control. */
+.task-card__open {
+  all: unset;
+  cursor: pointer;
+  display: block;
+}
+
+.task-card__open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+.task-card__title {
+  font-weight: 600;
+  color: var(--text);
+  /* Truncate visually without hiding the text: the full title stays in the
+   * DOM and in `title`, so hover and a screen reader both get it. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.task-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.task-card__meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.task-card__field {
+  display: flex;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.task-card__field dt {
+  color: var(--text-muted);
+}
+
+.task-card__field dd {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Anything with no real source yet reads as absent, never as a value. */
+.task-card__unmeasured {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.task-card__files {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.task-card__files-label {
+  color: var(--text-muted);
+}
+
+.task-card__file {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.task-card__files-more,
+.filters__clear {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.task-card__file-list {
+  flex-basis: 100%;
+  margin: 0;
+  padding-left: var(--space-4);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.task-card__actions {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+}
+
+/* --- Chips ------------------------------------------------------------- */
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.chip__duration {
+  opacity: 0.85;
+}
+
+/* Colour pairs come from global.css's severity tokens, which are chosen to
+ * clear WCAG AA against their own surface in both schemes. The label is
+ * always present as text, so colour is reinforcement rather than the
+ * carrier of meaning. */
+.chip--active {
+  background: var(--info-surface);
+  color: var(--info);
+}
+
+.chip--waiting {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+
+.chip--done {
+  background: var(--success-surface);
+  color: var(--success);
+}
+
+.chip--muted {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+
+/* Paused is the one that has to be spotted across a full board — stalled
+ * work is what the chip exists to surface. Error colouring plus a dashed
+ * border, so it survives greyscale, colour blindness and a bad monitor. */
+.chip--paused {
+  background: var(--error-surface);
+  color: var(--error);
+  border-style: dashed;
+  border-color: currentColor;
+  font-weight: 600;
+}
+
+/* --- Markers ----------------------------------------------------------- */
+
+/* Not pipeline chips: these are not a stage the task is at, they are things
+ * that need a human. Squared off so they never read as a chip. */
+.marker {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  border: 1px solid currentColor;
+  font-weight: 600;
+}
+
+.marker--review {
+  background: var(--error-surface);
+  color: var(--error);
+}
+
+.marker--bypass {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+
+/* --- Filters ----------------------------------------------------------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+
+.filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.filters__label {
+  color: var(--text-muted);
+}
+
+.filters__field select {
+  font: inherit;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--text);
+}
