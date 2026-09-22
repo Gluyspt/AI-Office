@@ -2,6 +2,17 @@
 
 **Ticket:** [002](../tasks/002-spike-hook-payloads.md) · **Department:** research · **Observed:** 2026-09-21/22
 
+> **Third pass, 2026-09-22, closing two named gaps.** Claude Code `2.1.278` at the start **and** at the
+> end of this pass (checked twice again). Two questions were measured and both are answered:
+> **`SessionStart` after `/clear`** (§7 — still not delivered over `http`, and this time the http
+> transport is *proven live* at that instant) and **`TaskCreated` / `TaskCompleted`** (§5b — they are
+> the *teammate task-board* hooks and cannot fire in an ordinary session; the subagent hypothesis is
+> wrong, and what actually fires is `SubagentStart` / `SubagentStop`, neither of which the design
+> registers). Two further items were deliberately **not** attempted and stay in "Not observed":
+> automatic `PreCompact` (needs a filled context window; the expected delta is only a `trigger` value)
+> and a rate-limit `StopFailure` (would mean deliberately exhausting the human's only account).
+> Nothing earlier in this document was rewritten.
+
 > **Second run, 2026-09-22, after the WSL login was repaired.** Claude Code was **still `2.1.278`** at
 > the start and end of the re-run (checked twice, as the binary self-updates). The re-run closed the
 > blocked items: the chat bridge end to end (§1), the `PreToolUse` blocking shape (§2), `Stop` and the
@@ -49,7 +60,9 @@ the cost is known, not its VPS value.
 | Does an **interrupted** turn (Escape) fire `Stop`, `StopFailure`, or neither? | **Neither.** Observed twice: the only event for an interrupted turn is its opening `UserPromptSubmit`. Busy/idle needs a watchdog. See §4b. | high, reproduced 2× |
 | Does the hook client accept a **self-signed** cert? | **No.** The handshake is rejected (`unknown ca`) and no event arrives, almost silently. `NODE_EXTRA_CA_CERTS` exported into the agent's environment fixes it completely. See §12. | high |
 | Retry on non-2xx? | **No.** Exactly one delivery, error shown to the agent, action proceeds. | high |
-| Does the design's hook config work as written? | **No.** `SessionStart` is never delivered to an `http` hook. See §7. | high, reproduced 3× |
+| Does the design's hook config work as written? | **No.** `SessionStart` is never delivered to an `http` hook — **at launch *or* after `/clear`**. See §7. | high, reproduced 5× |
+| Do `TaskCreated` / `TaskCompleted` fire for a subagent or a background task? | **No.** They are the **teammate task-board** hooks (`task_id`, `task_subject`, `teammate_name`), behind a feature gate, and cannot fire in an ordinary session. Subagent activity fires **`SubagentStart` / `SubagentStop`** instead — events the design does not register. See §5b. | high |
+| What links a subagent back to its parent? | **The parent's own `session_id`**, on every subagent event, plus `agent_id` / `agent_type`. A subagent is not a separate session. See §5b. | high |
 
 ## 1. The chat bridge — **it works, end to end**
 
@@ -385,6 +398,26 @@ below was **actually received**; nothing here is reconstructed.
 Note `source` — the public reference calls this field `session_start_type`. It is `source` on 2.1.278.
 There is no `permission_mode` on this event.
 
+#### SessionStart after `/clear` — **still a `command` hook only** *(third pass)*
+
+Same session, `/clear` typed into the TUI. The `http` entry was registered in the *same block* as the
+command entry and received nothing; the command entry received this.
+
+```json
+{
+  "session_id": "<new-uuid>",
+  "transcript_path": "/home/<user>/.claude/projects/-home-<user>-spike002b-tmp-proj/<new-uuid>.jsonl",
+  "cwd": "/home/<user>/spike002b-tmp/proj",
+  "scratchpad_dir": "/tmp/claude-<uid>/…/<new-uuid>/scratchpad",
+  "hook_event_name": "SessionStart",
+  "source": "clear"
+}
+```
+
+Two deltas from the `startup` payload above: `source` is **`"clear"`**, and **`model` is absent** — the
+startup payload carries `"model": "claude-sonnet-5"` and this one carries no model field at all. An
+ingest that reads `model` off `SessionStart` must tolerate its absence on a post-`/clear` session.
+
 ### SessionEnd — `http` and `command`
 
 ```json
@@ -619,6 +652,10 @@ Every payload carried `session_id`, `transcript_path`, `cwd`, `hook_event_name`,
 `SessionStart` — `prompt_id`. Most carried `scratchpad_dir`; some carried `permission_mode` and
 `effort.level`. `agent_id` / `agent_type` were absent (no subagents ran).
 
+*(Third pass: with a subagent running, `agent_id` and `agent_type` **are** present — on
+`SubagentStart`, on `SubagentStop`, and on any `PreToolUse` / `PostToolUse` issued from inside the
+subagent. They remain absent on the parent's own events. See §5b.)*
+
 ### Transport facts for ticket 005
 
 - `http` hooks POST with `content-type: application/json`, `user-agent: axios/1.15.2`,
@@ -653,8 +690,239 @@ kept so the gap is legible, with the re-run's outcome in the right-hand column.*
 | **`StopFailure` for a rate limit** | The only `StopFailure` ever captured was `authentication_failed` (§5). Whether `error: "rate_limit"` carries a reset time is still unknown, and the design's rate-limit detection rests on it. | Run an account to its limit deliberately. |
 | **Automatic (non-`manual`) `PreCompact` trigger** | Only `/compact` was run. | Fill a context window. |
 
+#### Outcome of the third pass, 2026-09-22
+
+The two rows the third pass was sent to close, and the state of the other three.
+
+| Event | Outcome |
+| --- | --- |
+| **`TaskCreated` / `TaskCompleted`** | **Not observed — and now explained, which is the better answer.** The background-task/subagent hypothesis above is **wrong**. A real subagent *was* spawned and a background shell task *was* run (§5b); neither fired these hooks. They are the **teammate task-board** hooks (`task_id`, `task_subject`, `teammate_name`), behind a feature gate. What subagents actually fire is `SubagentStart` / `SubagentStop` — captured in §5b. The todo-list hypothesis is dead too: **2.1.278 has no `TodoWrite` tool**. Nothing further to try short of enabling the teammates feature; **this row should not be re-run for the office build** — the events are irrelevant to it. |
+| **`SessionStart` over `http` after `/clear`** | **Measured — it does *not* arrive.** And this time with the http transport proven live in the same second. See §7. |
+| **Automatic (non-`manual`) `PreCompact` trigger** | **Still not observed, deliberately.** Needs a filled context window; the only expected delta is `trigger: "auto"`, which does not justify the spend. |
+| **`StopFailure` for a rate limit** | **Still not observed, deliberately, and it should stay that way.** Capturing it means running the account to its limit, and only one Claude Code login can be held at a time. Treat the rate-limit payload as an unknown shape and build the detector to tolerate a bare `error` code. |
+| **`Stop` with `stop_hook_active: true`** | Still not observed; not in this pass's scope. |
+
 **Nothing in this section has an invented schema.** Tickets 005, 009, 010 and 020 must treat these
 events as unknown shapes until they are captured.
+
+## 5b. Subagents and background tasks — what actually fires *(third pass, 2.1.278)*
+
+The hypothesis carried in "Still not observed" was that `TaskCreated` / `TaskCompleted` concern
+**background tasks / subagents** rather than the todo list. **That hypothesis is wrong**, and the real
+answer is more useful than the one being looked for.
+
+A real subagent was spawned — `Use your Task tool to spawn a general-purpose subagent whose entire job
+is to reply with the word PONG, then tell me what it said.` The agent complied first time. A
+background shell task was then spawned separately (`sleep 25` with `run_in_background: true`). Across
+both:
+
+| Event | Fired? |
+| --- | --- |
+| `TaskCreated` / `TaskCompleted` | **No** — neither, for either the subagent or the background shell task |
+| `SubagentStart` / `SubagentStop` | **Yes**, for the subagent |
+| `PreToolUse` / `PostToolUse` with `tool_name: "Agent"` | Yes |
+| `PreToolUse` / `PostToolUse` with `tool_name: "SubagentHandback"` | Yes — the subagent's reply is itself a tool call |
+| `Stop` with a **populated** `background_tasks` | Yes — both shapes, below |
+
+Why `TaskCreated` never fires is settled, not guessed. **Read out of the shipped 2.1.278 bundle** (a
+string/schema read, *not* a runtime observation — labelled as such deliberately) its payload schema is:
+
+```
+hook_event_name: "TaskCreated" | "TaskCompleted",
+task_id, task_subject, task_description?, teammate_name?, team_name?
+```
+
+and the emitter is reached only behind a feature gate, iterating stored tasks filtered by
+`status === "in_progress" && owner === <teammate name>`. These are the hooks for Claude Code's
+**teammate / shared task-board** feature, not for subagents, not for background shell tasks, and not
+for a todo list. **There is no `TodoWrite` tool in 2.1.278 at all** — asked to use one directly, the
+agent replied that it has no such tool, which closes the first run's hypothesis too.
+
+The same bundle read gives the full set of hook event names 2.1.278 knows, which is much larger than
+the design's eight and larger than this spike's thirteen. Recorded because ticket 009 chooses from it
+(again: read from the binary, **none of these is an observation** except where captured above):
+
+```
+PreToolUse, PostToolUse, PostToolUseFailure, PostToolBatch, Notification, UserPromptSubmit,
+UserPromptExpansion, SessionStart, SessionEnd, Stop, StopFailure, SubagentStart, SubagentStop,
+PreCompact, PostCompact, PreModelSwitch, PostModelSwitch, PermissionRequest, PermissionDenied,
+Setup, TeammateIdle, TaskCreated, TaskCompleted, Elicitation, ElicitationResult, ConfigChange,
+WorktreeCreate, WorktreeRemove, InstructionsLoaded, CwdChanged, FileChanged, DirectoryAdded,
+MessageDisplay
+```
+
+**`PostCompact` exists** — with `trigger: "manual" | "auto"` and a `compact_summary` field carrying
+"The conversation summary produced by compaction". §5's `PreCompact` note says "There is no
+`PostCompact`"; that statement was true of the events this spike had *registered*, and is false of the
+binary. Not captured at runtime here, so it is a correction to chase, not a measurement.
+
+### SubagentStart — `http` *(third pass)*
+
+```json
+{
+  "session_id": "<parent-session-uuid>",
+  "transcript_path": "/home/<user>/.claude/projects/…/<parent-session-uuid>.jsonl",
+  "cwd": "/home/<user>/spike002b-tmp/proj",
+  "scratchpad_dir": "/tmp/claude-<uid>/…/scratchpad",
+  "prompt_id": "<uuid>",
+  "agent_id": "ac051d3d…",
+  "agent_type": "general-purpose",
+  "hook_event_name": "SubagentStart"
+}
+```
+
+### SubagentStop — `http` *(third pass)*
+
+```json
+{
+  "session_id": "<parent-session-uuid>",
+  "transcript_path": "/home/<user>/.claude/projects/…/<parent-session-uuid>.jsonl",
+  "cwd": "/home/<user>/spike002b-tmp/proj",
+  "scratchpad_dir": "/tmp/claude-<uid>/…/scratchpad",
+  "prompt_id": "<uuid>",
+  "permission_mode": "auto",
+  "agent_id": "ac051d3d…",
+  "agent_type": "general-purpose",
+  "effort": { "level": "high" },
+  "hook_event_name": "SubagentStop",
+  "stop_hook_active": false,
+  "agent_transcript_path": "/home/<user>/.claude/projects/…/<parent-session-uuid>/subagents/agent-ac051d3d….jsonl",
+  "last_assistant_message": "PONG",
+  "background_tasks": [ { "id": "ac051d3d…", "type": "subagent", "status": "running", "description": "Reply with PONG test", "agent_type": "general-purpose" } ],
+  "session_crons": []
+}
+```
+
+**This is the answer to "what ties a subagent back to its parent".** Three things, all on the payload:
+
+1. **`session_id` is the *parent's*.** A subagent is not a separate session and does not get its own
+   `session_id`. Everything a subagent does arrives under the desk's existing correlation key — so an
+   orchestrator that already tracks `session_id` gets subagent activity for free, and an orchestrator
+   that assumes one `session_id` means one linear conversation will interleave a subagent's tool calls
+   with its parent's.
+2. **`agent_id` + `agent_type`** identify the subagent within the parent, and `agent_id` is the *same
+   value* on `SubagentStart`, on `SubagentStop`, in `PostToolUse.tool_response.agentId` for the
+   spawning `Agent` call, and in the `background_tasks[].id` entry. It is the join key for a
+   "subagent activity on a desk" panel.
+3. **`agent_transcript_path`** points at a per-subagent JSONL under the parent's project directory.
+
+`PreToolUse` / `PostToolUse` fired *inside* the subagent also carry `agent_id` and `agent_type` (seen
+on the `SubagentHandback` call), which is how the orchestrator tells a subagent's tool calls from its
+parent's. **Ticket 020's ownership guard must read them** — otherwise two subagents of one desk are
+indistinguishable from each other and from their parent.
+
+### Agent (subagent spawn) — `PreToolUse` / `PostToolUse` *(third pass)*
+
+```json
+{
+  "…": "standard envelope, session_id = parent",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "Reply with PONG test",
+    "prompt": "Your entire job: respond with exactly the single word PONG and nothing else.",
+    "subagent_type": "general-purpose"
+  },
+  "tool_use_id": "toolu_<id>"
+}
+```
+
+```json
+{
+  "…": "same envelope",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Agent",
+  "tool_response": {
+    "isAsync": true,
+    "status": "async_launched",
+    "agentId": "ac051d3d…",
+    "description": "Reply with PONG test",
+    "resolvedModel": "claude-sonnet-5",
+    "prompt": "Your entire job: respond with exactly the single word PONG and nothing else.",
+    "outputFile": "/tmp/claude-<uid>/…/<pre-clear-session-uuid>/tasks/ac051d3d….output",
+    "canReadOutputFile": true
+  },
+  "tool_use_id": "toolu_<id>",
+  "duration_ms": 11
+}
+```
+
+Note the **subagent's whole prompt is on the wire**, in both events — the delegated brief flows through
+the event server exactly as `Read` file bodies do (§5, `PostToolUse`), and the same retention and
+confidentiality question applies.
+
+Note also `outputFile`: its path segment is the **pre-`/clear` session id**, not the current one. The
+session's scratchpad/tasks directory keeps the id it was created with across a `/clear`, while
+`session_id` on the payload rotates. **Anything that derives a path from `session_id` will be wrong
+after a `/clear`.**
+
+### `Stop.background_tasks` — the element shape, finally observed *(third pass)*
+
+§5's `Stop` capture recorded `background_tasks: []` with the element shape **unknown**. Two shapes
+were populated on this pass; they are not the same shape:
+
+```json
+// while a subagent is running
+"background_tasks": [
+  { "id": "ac051d3d…", "type": "subagent", "status": "running",
+    "description": "Reply with PONG test", "agent_type": "general-purpose" }
+]
+
+// while a backgrounded shell command is running
+"background_tasks": [
+  { "id": "bhgiwkuhz", "type": "shell", "status": "running",
+    "description": "Sleep for 25 seconds", "command": "sleep 25" }
+]
+```
+
+`type` discriminates; `agent_type` appears only on `subagent`, `command` only on `shell`. The array is
+**live state, not an event log** — it lists what is running *at that moment*, and empties as things
+finish. `session_crons` stayed `[]` throughout and its element shape is still unknown.
+
+`PostToolUse` for a backgrounded `Bash` returns `{"stdout":"", "stderr":"", "interrupted":false,
+"noOutputExpected":false, "backgroundTaskId":"bhgiwkuhz"}` — the id, and no output.
+
+### Completion arrives as a synthetic `UserPromptSubmit` — **a real hazard for the chat panel**
+
+Neither a finishing subagent nor a finishing background task delivers its result through a
+turn-end event. Both are injected back into the session **as a new user prompt**, and therefore fire
+`UserPromptSubmit`:
+
+```json
+{
+  "…": "standard envelope",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "<agent-message from=\"ac051d3d…\">\n[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: …\n  PONG\n</agent-message>"
+}
+```
+
+```json
+{
+  "…": "standard envelope",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "<task-notification>\n<task-id>bhgiwkuhz</task-id>\n<tool-use-id>toolu_<id></tool-use-id>\n<output-file>/tmp/claude-<uid>/…/tasks/bhgiwkuhz.output</output-file>\n<status>completed</status>\n<summary>Background command \"Sleep for 25 seconds\" completed (exit code 0)</summary>\n</task-notification>"
+}
+```
+
+**`UserPromptSubmit` is not proof a human said anything.** §5 recommends keeping it as the "delivered"
+tick for a message the orchestrator sent; that recommendation stands, but the chat panel must
+discriminate — a prompt whose body opens with `<agent-message` or `<task-notification>` is machine
+injection and would otherwise render in the office UI as a team member speaking. This is the same
+class of mistake as §4's "`last_assistant_message` on `StopFailure`": key on structure, never on the
+field's presence.
+
+### `SubagentStop` also fires for Claude Code's *own* internal agents — filter it
+
+Of **seven** `SubagentStop` events delivered across this pass, exactly **one** was the subagent that
+was actually spawned. The other six carried `agent_type: ""` (empty), a different `agent_id` each
+time, and a `last_assistant_message` that was the TUI's **suggested follow-up prompt** — observed
+values `"what did it say"`, `"spawn another subagent to reply PING"`, `"check the output file"`, and
+once `"*(silence)*"`. One fires after almost every turn.
+
+So `SubagentStop` is **not** a reliable "a delegated unit of work finished" signal as it stands.
+Anything built on it must filter on `agent_type !== ""` — and even that is an inference from six
+samples, not a documented contract. `SubagentStart` fired **once**, only for the real subagent, and is
+the cleaner signal of the two.
 
 ## 6. Retry and failure behaviour
 
@@ -695,6 +963,41 @@ matter to the build: **`SessionStart` must be a `command` hook that POSTs to the
 
 Untested variant: whether `SessionStart` reaches an `http` hook after `/clear` (the docs hint that
 launch is the special case). Assume not until measured.
+
+### Measured, third pass: `/clear` does not help — and the "not yet initialised" explanation is wrong
+
+Same experiment design as above: an `http` entry and a `command` entry registered side by side in the
+**same** `SessionStart` block, a fresh interactive TUI, the launch `SessionStart` allowed to fire, then
+`/clear` typed into the TUI. `/clear` rotates the `session_id` (§3), so the two `SessionStart`s are
+told apart by id, not by timing.
+
+```
+ 6  06:37:53.507  /cmd/SessionStart     SessionStart   dddddddd-1111…   ← launch, command hook only
+    (nothing on /events/start)                                          ← launch, http hook: never
+ 7  06:38:16.727  /cmd/SessionEnd       SessionEnd     dddddddd-1111…   ← /clear
+ 8  06:38:16.754  /events/end           SessionEnd     dddddddd-1111…   ← http hook: ARRIVED
+ 9  06:38:16.793  /cmd/SessionStart     SessionStart   b7284b9c-edfc…   ← post-clear, command hook only
+    (nothing on /events/start)                                          ← post-clear, http hook: never
+```
+
+**`SessionStart` does not reach an `http` hook after `/clear` either.** Waited ~10 minutes; no late
+delivery, and the echo server logged **zero** TLS handshake rejections, so this is a non-delivery and
+not a silent transport failure (§12's failure mode is excluded by instrument).
+
+The important part is line 8. The post-`/clear` `SessionEnd` was delivered over `http` **39 ms
+before** the `SessionStart` that was not. The http hook transport is demonstrably alive, warm and
+working at that exact instant in that exact session. So §7's original guess — "the HTTP hook transport
+is not yet initialised at launch" — **cannot be the explanation**. `SessionStart` is simply never
+dispatched to `http` hooks, at any point in a session's life.
+
+**What this means for ticket 009.** The template does *not* need both an `http` and a `command` entry
+for `SessionStart` — a `command` entry alone, for every session start, is correct and complete. The
+possibility that motivated asking (http works after `/clear` but not at launch, forcing a
+belt-and-braces pair) is ruled out. One `command` hook, no http twin, no special-casing of the
+post-`/clear` case.
+
+Reproduced **5×** in total now (3× first pass, 1× `-p` and 1× interactive-with-`/clear` on the third),
+across `-p` and interactive launches, on 2.1.278.
 
 ## 8. Other findings that change how sessions get provisioned
 
@@ -757,6 +1060,21 @@ launch is the special case). Assume not until measured.
 | **Compaction does not rotate `session_id`** (unlike `/clear`) | Not addressed | **010** — correlation survives `/compact`; only `/clear` breaks it |
 | **An interrupt restores the interrupted prompt into the TUI input box** | Not addressed | **007**/**010** — send `C-u` before the next `send-keys`, or messages concatenate |
 | **A mid-session survey modal (`How is Claude doing this session?`) can appear unprompted** and swallows keystrokes, exactly like the first-run trust dialog of §8.1 | Not addressed | **007** — provisioning must expect modals at *any* time, not only at launch |
+
+### Added by the third pass, 2026-09-22
+
+| Finding | Contradicts | Tickets |
+| --- | --- | --- |
+| **`SessionStart` never reaches an `http` hook after `/clear` either**, and the `SessionEnd` delivered over http 39 ms earlier proves the transport was live — so "not initialised at launch" is not the cause (§7) | §7's own hypothesis; the design's all-`http` hook block | **009** — settles the open question: emit **one `command` entry** for `SessionStart` and *no* http twin. Do not special-case `/clear` |
+| **`TaskCreated` / `TaskCompleted` are the teammate task-board hooks**, not subagent or background-task hooks, and cannot fire in an ordinary session (§5b) | The spike's own carried hypothesis; anything that planned to key delegated work off them | **009** — drop both from the hook template; they are dead weight. **005** — no ingest path needed |
+| **Subagent activity fires `SubagentStart` / `SubagentStop`, which the design registers nowhere** (§5b) | The design's eight-event "Messaging out" list omits them | **009** (register `SubagentStart`; `SubagentStop` needs the filter below), **005** (ingest), **010**/step-3 (this is what a "subagent activity on a desk" view is built from) |
+| **A subagent shares its parent's `session_id`** and is distinguished only by `agent_id` / `agent_type`, which also appear on tool events fired from inside it (§5b) | The design treats `session_id` as identifying one linear conversation | **010** (a desk's event stream interleaves parent and subagent — the chat panel must group by `agent_id` or it will read as one confused speaker), **020** (**the ownership guard must read `agent_id`**, or two subagents of one desk are indistinguishable), **005** |
+| **`SubagentStop` fires for Claude Code's own internal agents too** — 6 of 7 observed had `agent_type: ""` and carried the TUI's suggested follow-up prompt as `last_assistant_message` (§5b) | Not addressed | **005**, **010** — filter `agent_type !== ""`, or the office UI shows six phantom finished subagents per turn. Prefer `SubagentStart`, which fired exactly once |
+| **A finished subagent or background task is injected back as a synthetic `UserPromptSubmit`** whose body is an `<agent-message …>` or `<task-notification>` block (§5b) | §5's "`UserPromptSubmit` timestamps when a message the orchestrator sent entered the agent" — true, but not *only* that | **010** (the chat panel would render machine injection as a human speaking), **005** — discriminate on the prompt body's structure |
+| **`Stop.background_tasks` element shape is now known, and is two shapes** — `{id,type:"subagent",status,description,agent_type}` and `{id,type:"shell",status,description,command}`, discriminated by `type`. It is live state, not a log (§5b) | §5's "element shape is **unknown** — do not model them from this sample" | **005**, **010** — it is now safe to model, with a `type` discriminant |
+| **A path derived from `session_id` breaks at `/clear`**: the scratchpad/tasks directory keeps the *pre-`/clear`* session id while payload `session_id` rotates (§5b, `outputFile`) | Not addressed | **007**, **015** — never rebuild a session's scratchpad path from the current `session_id` |
+| **Post-`/clear` `SessionStart` carries `source: "clear"` and no `model` field** (the `startup` payload carries `model`) (§5) | Not addressed | **005**, **008** — `model` on `SessionStart` is optional |
+| **`PostCompact` exists in 2.1.278** (with `trigger` and a `compact_summary` of the conversation summary), as does a 33-event hook list far larger than the design's eight (§5b). *Read from the shipped bundle, not observed at runtime* | §5's `PreCompact` note, "There is no `PostCompact`" | **009** — worth one runtime check before the template is frozen; `compact_summary` would tell the orchestrator what survived a compaction |
 
 ## 10. Needs a human
 
@@ -835,6 +1153,37 @@ in WSL and was removed afterwards. Nothing outside this repo's three spike files
 > tmux new-session -d -s spike002-echo -c ~/spike002-tmp \
 >   "node /path/to/spikes/hooks/echo-server.mjs 2>&1 | tee -a ~/spike002-tmp/echo-server.out"
 > ```
+
+### Third pass — what was added to reproduce §5b and §7
+
+`spikes/hooks/settings.spike.json` was **not modified**: it is the record of the config §7 was found
+with. The third pass used a throwaway copy in its own scratch directory, differing in three ways:
+
+- `SessionStart` (and `SessionEnd`, as a live-transport control) carry **both** an `http` entry and a
+  `command` entry **in the same block** — the `command` entry being a two-line script that `curl`s the
+  stdin payload to `/cmd/<EventName>` and exits 0. This is the only way to tell "the event did not
+  fire" from "the event fired and http did not get it".
+- `SubagentStart` and `SubagentStop` added as `http` entries. They are not in the design's list and not
+  in `settings.spike.json`; they are what actually fires for a subagent (§5b).
+- The same `NODE_EXTRA_CA_CERTS` requirement as §12 — nothing changes there.
+
+Triggers: the post-`/clear` `SessionStart` is `tmux send-keys -l "/clear"` then `Enter` (the slash
+menu's first entry is already `/clear`). A subagent is `Use your Task tool to spawn a general-purpose
+subagent whose entire job is to reply with the word PONG, then tell me what it said.` — the agent
+complied first time, no re-prompt needed. A background shell task is `Run the shell command: sleep 25
+-- using your Bash tool with run_in_background set to true.` Send `C-u` before each new prompt: the TUI
+pre-fills the input box with a *suggested* follow-up, which otherwise concatenates (same hazard as the
+restored prompt after an interrupt, §4b).
+
+The workspace trust dialog of §8.1 appeared again for the new scratch directory and was answered with
+`Down` then `Enter` — it must be cleared before any `SessionStart` fires.
+
+Scratch lived in `~/spike002b-tmp` and was removed afterwards; the two tmux sessions
+(`spike002b-echo`, `spike002b-tui`) were killed individually. The user's global
+`~/.claude/settings.json` was byte-identical before and after (22 bytes, same md5), and no
+config-mutating slash command was used. Residue knowingly left behind, in the user's own Claude Code
+state rather than this repo: a workspace-trust entry for the scratch directory, and the session
+transcripts under `~/.claude/projects/`.
 
 ## 12. The hook client rejects a self-signed certificate
 
