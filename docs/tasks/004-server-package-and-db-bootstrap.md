@@ -75,5 +75,32 @@ honestly needs a scratch database created and dropped per run — worth doing, n
 
 ## Open questions
 
-- [ ] The design says "the orchestrator's database" (singular) but also "one graph server per project". It does not say whether per-project data is isolated by schema, by a `project_id` column, or by separate databases. This ticket assumes **one database, `project_id` column on every project-scoped table**. If isolation needs to be stronger, it is cheaper to change now than after eight migrations.
+- [x] **SETTLED 2026-09-23: one database, `project_id` on every project-scoped table.** Confirmed
+      with a human, so it is a decision rather than the assumption it started as.
+
+      The open question conflated two stores. "One graph server per project" is about the
+      **knowledge graph**, which does not live in Postgres at all — it is a separate MCP server
+      process per project (design, "Knowledge graph": *"one HTTP server per project"*). The
+      per-project isolation that phrase describes already exists, in a different store. About its
+      own relational data the design says **"the orchestrator's database", singular**.
+
+      Three reasons the single database wins:
+
+      - **Cross-project reads are specified, not hypothetical.** 018's spawn cap reads a *global*
+        memory floor from `/proc/meminfo`; the Usage page (step 7), the Lobby's office cards
+        (step 9) and step 12's multiple projects are all cross-project by definition. Each becomes
+        a fan-out across N databases.
+      - **The deletion story is already satisfied.** "Deleting an office never deletes the git
+        repo" — it drops the task history and event log. That is `delete from projects where
+        id = ...` plus cascades, verified end to end once `0013_events_project_fk.sql` gave
+        `events` the `on delete cascade` it had been missing. `DROP DATABASE` buys no isolation
+        that is not already there.
+      - **The cost is symmetric in time.** Seven applied migrations and every query assume
+        `project_id`. Reversing costs the same now as later — and now it buys nothing, because
+        there is exactly one project.
+
+      If blast radius ever becomes the concern, the cheaper answers are a schema per project in
+      one Postgres, or row-level security: both keep one connection pool and one migration run.
+      **Revisit only on a real multi-tenant requirement** — separate customers, separate
+      backup/retention policies, or a compliance boundary — which would land at step 12.
 - [ ] No retention policy is stated for any table. Relevant first to the event log in ticket 005.
