@@ -207,6 +207,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `db/migrations/0011_pause.sql` | 028 |
 | `db/migrations/0012_gate_bypass.sql` | 032 |
 | `db/migrations/0013_events_project_fk.sql` | — (maintenance; see below) |
+| `db/migrations/0014_task_learning.sql` | 017 |
 | `scripts/dev-cert.mjs` | — (maintenance; see below) |
 | `deploy/host/sudoers.d/office` | 007 |
 | `docs/spikes/001-hook-payloads.md` | 002 |

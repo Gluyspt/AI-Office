@@ -34,6 +34,11 @@ leaves a named seam for it.
 - `packages/mcp-tasks/src/office-client.ts` — typed HTTP client to the orchestrator, carrying the session identity ticket 016 settled on
 - `packages/mcp-tasks/src/tools/claim-task.ts`
 - `packages/mcp-tasks/src/tools/complete-task.ts`
+- `db/migrations/0014_task_learning.sql` — adds `tasks.learning` (see "Where the learning entry
+  goes" below). **Allocated 2026-09-23**: this ticket had no migration in its file scope and the
+  column it is told to write to does not exist, which is the kind of gap that becomes an
+  improvised schema change at 1am. Numbered 0014 because 0008–0012 are claimed by unwritten
+  tickets and 0013 was used by a maintenance fix
 - `packages/server/src/features/tasks/claim.ts` — the transactional claim: owner check, dependency check, lock acquisition, state transition
 - `packages/server/src/features/tasks/complete.ts` — summary and learning required, locks released, transition to ready for QA
 - `packages/server/src/features/tasks/routes/actions.ts` — `POST /tasks/:id/claim`, `POST /tasks/:id/complete`
@@ -41,6 +46,30 @@ leaves a named seam for it.
 ### Files modified
 
 None.
+
+## Where the `learning` entry goes (settled 2026-09-23)
+
+`complete_task(task_id, summary, learning)` **requires** a learning entry — the design is explicit
+that a completion without one is refused. But **the knowledge graph, where that entry eventually
+belongs, is build step 5**, and this ticket is step 2. This ticket's own open question said "stored
+on the task row for now".
+
+Two things about that were unfinished, and both are settled here rather than discovered mid-build:
+
+1. **`tasks` has no `learning` column.** Nothing in 0005 or any later migration adds one, so the
+   instruction to "store it on the task row" pointed at a column that does not exist.
+2. **This ticket had no migration in its file scope**, so adding the column had nowhere legitimate
+   to live under one-file-one-ticket.
+
+`db/migrations/0014_task_learning.sql` is now allocated to this ticket. Keep it minimal — a
+nullable `text` column plus a comment naming step 5 as its destination. Deliberately *not*
+structured, indexed or normalised: the graph is where this data acquires shape, relations and a
+source, and building a second half-shaped store here would mean migrating out of two places at
+step 5 instead of one.
+
+**The step-5 migration path is: read every non-null `tasks.learning`, write it into the graph as a
+fact sourced to the task, then drop the column.** Stated now so it is a known one-way door rather
+than an archaeology problem later.
 
 ## Inherited requirement (added 2026-09-23)
 
