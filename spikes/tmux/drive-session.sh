@@ -955,7 +955,8 @@ cmd_chars() {
   # and the model would summarise rather than repeat. So: submit, poll the transcript for
   # the user message, then Escape the turn so the reply is never paid for.
   if [ "$mode" = "echo" ]; then
-    for size in 1000 4000 16000 65536; do
+    # SPIKE_SIZES_DELIVER="" skips the paid half entirely, for a free refusal-only run.
+    for size in ${SPIKE_SIZES_DELIVER-1000 4000 16000 65536}; do
       for mech in literal buffer; do
         clear_composer "$s"
         sleep 0.2
@@ -1022,7 +1023,10 @@ cmd_chars() {
     # probe refusal far past it for nothing. If `send-keys -l` swallows 4 MB without
     # complaint we have learned the tmux-layer limit is above anything that matters,
     # without paying for a single token of it.
-    for size in 262144 1048576 4194304; do
+    # Refusal probing is FREE — no submit, so no tokens — which makes a ladder
+    # affordable and lets the exact boundary be pinned rather than bracketed.
+    # Override to narrow it: SPIKE_SIZES_REFUSAL="20000 24000 28000 32768".
+    for size in ${SPIKE_SIZES_REFUSAL:-262144 1048576 4194304}; do
       for mech in literal buffer; do
         clear_composer "$s"; sleep 0.2
         body="$(awk -v n="$size" 'BEGIN{s="abcdefghij";while(length(s)<n)s=s s;print substr(s,1,n)}')"

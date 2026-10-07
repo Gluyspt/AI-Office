@@ -37,12 +37,18 @@
 // mechanism (§4), the Escape interrupt (§3), the mid-turn queue (§2) and
 // SessionEnd on kill (§5). **Every one of those rows was taken on WSL2
 // with `SPIKE_USER` empty, i.e. with no `sudo` in the tmux path at all**,
-// and §7 (`sudo -u` parity) is DEFERRED, NOT ATTEMPTED — `$HOME`,
-// `CLAUDE_CONFIG_DIR` resolution and whether two users share a tmux socket
-// are all unknown for the shape this adapter actually uses. The adapter is
-// written to the `sudo -n -u` form because that is what the VPS will run;
-// it is not claimed to behave identically to the unwrapped calls that were
-// measured. Ticket 007's VPS re-measurement criterion is what closes this.
+// and the adapter is written to the `sudo -n -u` form because that is what
+// the VPS runs.
+//
+// **§7 (`sudo -u` parity) is now MEASURED on the target VPS, 7/7**
+// (2026-10-07): the pane reports the agent user, `$HOME` matches passwd,
+// sockets are per-user, and the agent user's tmux cannot see the caller's
+// sessions. `CLAUDE_CONFIG_DIR` is deliberately unset — one config directory
+// per Linux user, see ticket 009. The character matrix was re-measured on
+// that host too, 35/36, with `send-keys -l` intact on all nine payload
+// classes; the one failure is plain `paste-buffer` losing a newline-bearing
+// payload, which this adapter does not use. The delivery and interrupt
+// timings below are still WSL figures until ticket 007's (b2) rows land.
 //
 // ## Two hazards this file defends against but does not solve
 //
@@ -70,6 +76,7 @@ import {
   killSessionArgs,
   listSessionsArgs,
   newSessionArgs,
+  maxMessageBytesFor,
   sendKeysArgs,
   sendLiteralArgs,
   type TmuxKey,
@@ -326,8 +333,10 @@ export interface NewSessionRequest {
   /**
    * Which login the agent uses. Set via `new-session -e`, not via the
    * design's inline `'CLAUDE_CONFIG_DIR=… claude'` form, because the inline
-   * form needs a shell. Whether `-e` survives `sudo -u` is unmeasured —
-   * spike 002 §7 is DEFERRED — and is part of the VPS re-measurement.
+   * form needs a shell. `-e` through `sudo -u` was measured on the VPS
+   * 2026-10-07 (spike 002 §7, 7/7): the variable reaches the pane. Nothing
+   * sets it by default, though — one config directory per Linux user, so
+   * `$HOME` already selects the login. See ticket 009.
    */
   readonly configDir?: string;
   /**
@@ -422,7 +431,21 @@ export function createTmuxAdapter(options: TmuxAdapterOptions): TmuxAdapter {
   const tmuxPath = options.tmuxPath ?? "/usr/bin/tmux";
   const commandTimeoutMs = options.commandTimeoutMs ?? 10_000;
   const readyTimeoutMs = options.readyTimeoutMs ?? 120_000;
-  const maxMessageBytes = options.maxMessageBytes ?? 131_072;
+  // An OPTIONAL operator override, not the limit. The real limit is tmux's
+  // command-length ceiling and it depends on the session name — see
+  // `maxMessageBytesFor`. 131_072 lived here until 2026-10-07 and was eight
+  // times too high: a 100 KB brief passed this gate and tmux refused it, which
+  // was loud but named the wrong layer. `undefined` means "use the measured
+  // limit"; a configured value only ever lowers it.
+  const configuredMaxMessageBytes = options.maxMessageBytes;
+
+  /** The lower of the measured per-name limit and any operator override. */
+  function messageByteBudget(name: string): number {
+    const measured = maxMessageBytesFor(name);
+    return configuredMaxMessageBytes === undefined
+      ? measured
+      : Math.min(measured, configuredMaxMessageBytes);
+  }
   const sessionCols = options.sessionCols ?? 200;
   const sessionRows = options.sessionRows ?? 50;
   const sessionVisibleTimeoutMs = options.sessionVisibleTimeoutMs ?? DEFAULT_SESSION_VISIBLE_TIMEOUT_MS;
@@ -526,7 +549,7 @@ export function createTmuxAdapter(options: TmuxAdapterOptions): TmuxAdapter {
   ): Promise<TmuxResult<{ readonly byteLength: number }>> {
     const refused = guard(user, name);
     if (refused) return refused;
-    const check = checkMessageText(text, maxMessageBytes);
+    const check = checkMessageText(text, messageByteBudget(name));
     if (!check.ok) {
       return fail("invalid_message", check.rejection.message);
     }
@@ -565,7 +588,7 @@ export function createTmuxAdapter(options: TmuxAdapterOptions): TmuxAdapter {
   ): Promise<TmuxResult<{ readonly byteLength: number }>> {
     const refused = guard(user, name);
     if (refused) return refused;
-    const check = checkMessageText(text, maxMessageBytes);
+    const check = checkMessageText(text, messageByteBudget(name));
     if (!check.ok) return fail("invalid_message", check.rejection.message);
 
     // Best-effort refusal to type into a dialog. Spike 002 §1: a chat
