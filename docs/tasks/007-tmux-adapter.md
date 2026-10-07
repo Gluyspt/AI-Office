@@ -75,6 +75,14 @@ root. Keeping them together let "no root" hold up a measurement that never neede
       `visudo -c -f deploy/host/sudoers.d/office` passes there. Part of (b); listed separately
       because it is the install, not a measurement.
 
+**Root became available the same day the split was made (2026-10-07), so both run together.** The
+split stands as the record of why neither could close while they were one criterion, but (a) no
+longer has to be taken the weaker way: `spikes/tmux/run-007b.sh` runs as `office` with
+`SPIKE_USER=agent1` and covers both, which makes even the RSS floor a reading through the real
+`sudo -n -u` path rather than one carrying 003's caveat. `run-007a.sh` is kept as the no-root
+fallback and is superseded wherever root exists. Remaining human step: one interactive `/login` on
+`agent1`, in the project directory, so the folder-trust dialog is cleared in the same sitting.
+
 ## Decided
 
 - **`newSession` does not set `CLAUDE_CONFIG_DIR`.** Each agent runs as its own Linux user, so
@@ -180,14 +188,20 @@ root. Keeping them together let "no root" hold up a measurement that never neede
       Decided above), and the template names `agent1/agent2/agent3`. What remains open is **which
       department each account owns**, which is the design's own open question
       ("Who owns which department by default?") and not this ticket's to answer.
-- [ ] **Is `rtdvps` the deployment target, or only a measuring instrument?** Surveyed 2026-10-07:
+- [x] ~~**Is `rtdvps` the deployment target, or only a measuring instrument?**~~ **Answered by a
+      human 2026-10-07: it is the box the office deploys on, and root is available on it.** Which
+      settles the account question too — the agent accounts are provisioned there for real, not as
+      a simulation, so `provision-host.sh` and criterion (b) both become runnable. Survey, retained
+      because every later figure has to be read against it:
       Ubuntu 26.04.1, tmux 3.6, node 22.23.3, claude 2.1.283, 4×i3-7100T, **3.2 GB RAM**, and four
       other people's accounts on it (`rtd` uid 1000 is the server admin — `sudo`, `lxd`). `gluy`
       has **no sudo at all**, so nothing here can be provisioned from this login. The design
       anticipates this split — "office admin is not server admin. The server admin runs the VPS and
       controls Linux users, Claude logins, gateway keys, and secrets" (design line 575) — so the
-      answer is a person, not a ticket. It gates the `sudo -n -u` half of the re-measurement below;
-      it does **not** gate the RSS half, which needs only a login.
+      answer was a person's, not a ticket's — and the person has given it. What remains is one
+      interactive `/login` on `agent1`, which is also when the folder-trust dialog must be cleared:
+      a fresh account trusts nothing, and §4 of the spike found Enter does not dismiss that dialog,
+      so an unattended first run parks on it with tmux reporting a live session.
 - [ ] Granting `NOPASSWD: /usr/bin/tmux` in full lets `office` run `tmux new-session` with **any** command as those users. The design accepts this; note that a tighter rule would need a wrapper script. Not changing it here, but recording it as a deliberate choice rather than an oversight.
 - [ ] **Should the Claude Code CLI version be pinned on the VPS?** Source: `docs/spikes/002-tmux-tui-control.md`. The binary
       auto-updated 2.1.178 to 2.1.278 *during* the spike, and the new build added a blocking modal that

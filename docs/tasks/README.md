@@ -220,7 +220,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `scripts/provision-user.sh` | 009 |
 | `spikes/hooks/echo-server.mjs`, `spikes/hooks/settings.spike.json` | 002 |
 | `spikes/tmux/drive-session.sh` | 003 |
-| `spikes/tmux/run-007a.sh` | 007 |
+| `spikes/tmux/run-007a.sh`, `spikes/tmux/run-007b.sh` | 007 |
 | `spikes/mcp/probe-server.mjs` | 016 |
 | `packages/shared/package.json`, `packages/shared/tsconfig.json`, `packages/shared/src/ids.ts` | 001 |
 | `packages/shared/src/events.ts` | 005 |
