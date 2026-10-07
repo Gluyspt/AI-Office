@@ -1,0 +1,29 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	123924
+# started	2026-10-07T12:24:53Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	(none)
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet
+# rundir	/home/agent1/spike003-tmp/run-123924
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T12:24:54Z	chars	0	startup	ready	-	-	prompt reached
+2026-10-07T12:24:55Z	chars	0	size-1000/literal	delivered_whole	412	ms	transcript: the user message carried all 1000 chars byte for byte
+2026-10-07T12:24:57Z	chars	0	size-1000/buffer	delivered_whole	173	ms	transcript: the user message carried all 1000 chars byte for byte
+2026-10-07T12:24:59Z	chars	0	size-4000/literal	delivered_whole	170	ms	transcript: the user message carried all 4000 chars byte for byte
+2026-10-07T12:25:02Z	chars	0	size-4000/buffer	delivered_whole	909	ms	transcript: the user message carried all 4000 chars byte for byte
+2026-10-07T12:25:04Z	chars	0	size-16000/literal	delivered_whole	-494	ms	transcript: the user message carried all 16000 chars byte for byte
+2026-10-07T12:25:06Z	chars	0	size-16000/buffer	delivered_whole	160	ms	transcript: the user message carried all 16000 chars byte for byte
+2026-10-07T12:25:07Z	chars	0	size-65536/literal	send_refused	65536	chars	the send mechanism refused this size outright — loud, not silent: command too long
+2026-10-07T12:25:09Z	chars	0	size-65536/buffer	delivered_whole	181	ms	transcript: the user message carried all 65536 chars byte for byte
+2026-10-07T12:25:11Z	chars	0	refusal-262144/literal	send_refused	262144	chars	the send mechanism refused 262144 chars outright — loud, not silent, which is the acceptable half of ticket 007's criterion: /home/agent1/drive-session.sh: 219: /usr/bin/tmux: Argument list too long
+2026-10-07T12:25:12Z	chars	0	refusal-262144/buffer	accepted_by_mechanism	262144	chars	the send mechanism accepted 262144 chars without error — NOT submitted, so whether it arrived whole is unverified at this size; this row is about the tmux layer only
+2026-10-07T12:25:13Z	chars	0	refusal-1048576/literal	send_refused	1048576	chars	the send mechanism refused 1048576 chars outright — loud, not silent, which is the acceptable half of ticket 007's criterion: /home/agent1/drive-session.sh: 219: /usr/bin/tmux: Argument list too long
+2026-10-07T12:25:14Z	chars	0	refusal-1048576/buffer	accepted_by_mechanism	1048576	chars	the send mechanism accepted 1048576 chars without error — NOT submitted, so whether it arrived whole is unverified at this size; this row is about the tmux layer only
+2026-10-07T12:25:15Z	chars	0	refusal-4194304/literal	send_refused	4194304	chars	the send mechanism refused 4194304 chars outright — loud, not silent, which is the acceptable half of ticket 007's criterion: /home/agent1/drive-session.sh: 219: /usr/bin/tmux: Argument list too long
+2026-10-07T12:25:16Z	chars	0	refusal-4194304/buffer	accepted_by_mechanism	4194304	chars	the send mechanism accepted 4194304 chars without error — NOT submitted, so whether it arrived whole is unverified at this size; this row is about the tmux layer only

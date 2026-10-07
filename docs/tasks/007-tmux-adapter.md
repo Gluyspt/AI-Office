@@ -39,7 +39,16 @@ None.
 - [ ] `newSession` starts a detached tmux session as the target user with `CLAUDE_CONFIG_DIR` and the project working directory set, and `hasSession` reports it within 2 s.
 - [ ] Commands are built as **argument arrays**, never by string interpolation into a shell line. A test asserts that a message containing `; rm -rf ~` reaches the agent as literal text and executes nothing.
 - [x] Every character class from ticket 003's findings (double quote, single quote, backtick, dollar, semicolon, newline, non-ASCII) round-trips into the agent's prompt intact, using the mechanism that spike recorded. **Verified on the VPS 2026-10-07, transcript-checked in both directions: 35/36, with `send-keys -l` passing all nine classes.** See (a2a).
-- [ ] A message longer than the tmux buffer limit is delivered whole or fails loudly — never truncated silently. State the measured limit in a code comment. **Mis-specified: see (a2b).** "The tmux buffer limit" names a mechanism the adapter does not use; the limit that matters is `send-keys -l`'s, and it is unmeasured. Reword alongside the measurement.
+- [x] A message longer than the tmux buffer limit is delivered whole or fails loudly — never
+      truncated silently. State the measured limit in a code comment. **Measured on the VPS
+      2026-10-07, and the criterion's wording was wrong: "the tmux buffer limit" names
+      `paste-buffer`, which the adapter does not use.** The limit that matters is `send-keys -l`'s.
+      **It carries at least 16 000 characters intact and refuses everything at 65 536 and above —
+      loudly, at two distinct layers: tmux's own "command too long" at 64 KB, and `execve`'s
+      "Argument list too long" from 256 KB to 4 MB. No size truncated silently.** That is the
+      criterion in its acceptable form. For the code comment: **16 000 chars is the measured safe
+      floor; refuse or chunk above a conservative bound.** The exact boundary between 16 000 and
+      65 536 is unpinned and does not need pinning.
 - [ ] `sendEscape` halts a mid-turn agent and leaves the session alive, verified by `hasSession` afterwards.
 - [ ] `killSession` on a non-existent session returns a typed "not found" result rather than throwing.
 - [ ] Session names are stable across restarts for the same inputs, and two projects with the same role and owner produce different names — asserted by a table-driven test.
@@ -70,21 +79,35 @@ root. Keeping them together let "no root" hold up a measurement that never neede
       **`send-keys -l` passed all nine classes including `newline`**, so the adapter's mechanism is
       confirmed. This closes the "every character class round-trips, using the mechanism that spike
       recorded" criterion above.
-- [ ] **(a2b) The payload-size limit — NOT measured, and this criterion is mis-specified.** The
-      criterion above says "longer than the tmux **buffer** limit", which presumes `load-buffer`/
-      `paste-buffer`. **The adapter sends with `send-keys -l`, and nothing has probed that
-      mechanism's size behaviour.** The harness's size loop exercises the buffer path — the very
-      one this run re-confirmed loses newlines — so even a clean result there would not answer it.
-      It also never submits and never reads the transcript: it reads the composer, which showed
-      `collapsed_to_placeholder` at all four sizes with the detail *"verify with chars --mode
-      echo"*, printed by a run that was in echo mode. Its own source comment concedes that only
-      echo mode can prove the payload survived.
-      **What is established:** tmux accepted every size up to 65 536 chars — `send_failed` never
-      fired — so there is no tmux-level refusal below 64 KB on the buffer path; integrity at any
-      size ≥ 1000 is unverified and the composer cannot verify it.
-      **To close this:** probe `send-keys -l` at increasing sizes with transcript verification.
-      That is a harness change, not another run. Until then the adapter's code comment should state
-      what is actually known rather than a limit nobody measured.
+- [x] **(a2b) The payload-size limit — measured 2026-10-07.** `send-keys -l` delivers whole at
+      1 000 / 4 000 / 16 000 chars (170–412 ms) and is **refused loudly at 65 536, 262 144,
+      1 048 576 and 4 194 304** — tmux's "command too long" at the first, `execve`'s "Argument list
+      too long" at the rest. `paste-buffer` is the opposite and worse shape: it delivered 64 KB
+      whole in 181 ms and the tmux layer accepted **4 MB** without a word, because it goes via
+      stdin rather than argv, so it has **no loud failure at any size** — which on top of losing
+      newlines on two hosts is why it stays ruled out despite being the only mechanism that carries
+      64 KB.
+
+      Closing this needed the probe rewritten: the original measured `paste-buffer` and read the
+      composer, which collapses anything over ~1 000 chars to `[Pasted text #N]`. The rewrite
+      verifies from the **transcript's user line** — "did it arrive", which is the actual question,
+      not whether the agent echoed it — and splits the work by cost, since only half of it costs
+      anything: refusal needs no submit and is free, delivery needs a submit and becomes input
+      tokens (256 KB ≈ 65 000 of them for one trial). So delivery is verified to 64 KB and refusal
+      probed to 4 MB for nothing.
+
+      **Two rows in the first pass were artefacts of my own probe and are not findings:** a
+      `not_delivered_whole` at 59.9 s and another at 59.2 s — the full timeout — between trials
+      that passed in 155 ms. The size loop omitted the `wait_idle` the matrix loop has, so a submit
+      landed while the agent was busy and tmux queued it. Both pass after the fix. **A failure whose
+      duration equals the timeout is a queueing artefact until proven otherwise.**
+- [ ] **The host's clock steps backwards, which every timing criterion inherits.** One row reported
+      **`-494 ms`** — impossible by construction, since `t0` precedes the loop, so the wall clock
+      moved back about half a second between two `date +%s%3N` calls. NTP on a freshly provisioned
+      box is the obvious cause. This ticket and 008 both assert on timings (the 101 ms hook round
+      trip, the ~124 ms `Escape`), so: **assert on percentiles over many trials, never a single
+      reading, and treat a negative or impossibly-small duration as a clock event rather than a
+      fast path.** Left open as a standing constraint on how timing criteria are written.
 - [ ] **Why (a2) cannot run as `office` — a finding, not a failure.** `chars --mode echo` takes
       ground truth from Claude Code's JSONL transcript, on purpose: the pane renders markdown and
       once made backticks look mangled when they had arrived byte for byte. Two walls, stacked:

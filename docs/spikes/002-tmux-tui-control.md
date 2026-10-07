@@ -178,33 +178,82 @@ a provisional finding.
 `send-keys -l` — the mechanism ticket 007's adapter actually uses — passed **all nine classes,
 including `newline`**. So did `send-keys` and `paste-buffer -p`. The adapter's choice is confirmed.
 
-### Payload-size limit — **STILL NOT MEASURED, and the probe is aimed at the wrong mechanism**
+### Payload-size limit — **MEASURED (VPS). `send-keys -l` tops out between 16 000 and 65 536 chars, and fails loudly**
 
-Before the structural problem below, there is a simpler one: **the size probe measures a mechanism
-the adapter does not use.**
+This is the figure ticket 007's code comment asks for. Getting it needed the probe rewritten,
+because the one that existed answered a different question — see
+[the probe that measured the wrong mechanism](#the-probe-that-measured-the-wrong-mechanism) below.
 
-Reading the probe (`spikes/tmux/drive-session.sh`, the buffer-limit loop): for each of 1000, 4000,
-16000 and 65536 characters it builds a marker-prefixed payload, sends it with
-`load-buffer` + `paste-buffer -d`, sleeps 1.5 s, and reads the **composer**. It never submits and
-never looks at the transcript. All four sizes came back `collapsed_to_placeholder`
-(`[Pasted text #1..#4]`), with the detail string *"verify with chars --mode echo"* — printed by a
-run that **was** in echo mode, because the size loop behaves identically in both. Its own source
-comment concedes the point: "only echo mode can prove the whole payload survived." The harness
-instructs you to do the thing it does not do.
+Delivery is verified from the **transcript's user line** — "did the whole payload arrive" — not from
+the reply and not from the composer. Rows in `docs/spikes/002-vps-results/sizes.tsv`.
 
-And the mechanism it exercises is `load-buffer`/`paste-buffer` — **the one this same run just
-re-confirmed loses a newline-bearing payload entirely.** The adapter sends with `send-keys -l`.
-So even a clean result here would not answer the criterion it exists to answer.
+| size | `send-keys -l` (what the adapter uses) | `load-buffer` + `paste-buffer` |
+| --- | --- | --- |
+| 1 000 | delivered whole, 412 ms | delivered whole, 173 ms |
+| 4 000 | delivered whole, 170 ms | delivered whole, 909 ms |
+| 16 000 | **delivered whole** | delivered whole, 160 ms |
+| 65 536 | **`send_refused` — tmux: "command too long"** | delivered whole, 181 ms |
+| 262 144 | `send_refused` — execve: "Argument list too long" | accepted by tmux (delivery unverified) |
+| 1 048 576 | `send_refused` — "Argument list too long" | accepted by tmux (delivery unverified) |
+| 4 194 304 | `send_refused` — "Argument list too long" | accepted by tmux (delivery unverified) |
 
-**What the run does establish:** tmux accepted every size up to 65 536 characters. `send_failed`
-never fired, so neither `load-buffer` nor `paste-buffer` refused any of those sizes — there is no
-tmux-level refusal below 64 KB on that path. Integrity at every size ≥ 1000 is **unverified**, and
-the composer cannot verify it, by construction.
+**The answer for the adapter's code comment: `send-keys -l` carries at least 16 000 characters
+intact and refuses everything at 65 536 and above — loudly, every time, at two distinct layers.**
+tmux's own command-length limit rejects 64 KB; above 256 KB the argument never survives `execve` at
+all. **No size silently truncated on this mechanism.** That is the criterion satisfied in its
+acceptable form: *delivered whole, or fails loudly.* The exact boundary between 16 000 and 65 536 is
+not pinned down and does not need to be — the adapter's job is to refuse or chunk above a
+conservative bound, and 16 000 is a measured safe floor.
 
-**So ticket 007's criterion is mis-specified, not merely unmet.** It reads "a message longer than
-the tmux **buffer** limit", which presumes the buffer path; the adapter's path is `send-keys -l`,
-whose size behaviour nothing has probed. Measuring the limit means probing `send-keys -l` with
-transcript verification at increasing sizes — a harness change, not another run.
+**`paste-buffer` is the opposite shape and that is why it stays ruled out.** It delivered 64 KB
+whole in 181 ms and the tmux layer swallowed 4 MB without a word — because it goes through stdin,
+not argv, so there is no `execve` ceiling to protect it. It offers **no loud failure at any size**,
+and whether a 4 MB paste arrives whole is unverified. Combined with losing a newline-bearing payload
+on two independent hosts, it is unusable for the adapter even though it is the only mechanism that
+carries 64 KB.
+
+**Two rows in the first pass were artefacts of this probe, not findings**, and are recorded here so
+nobody mines them out of the raw TSV: `size-1000/literal` and `size-65536/buffer` came back
+`not_delivered_whole` after the **full** timeout — 59.9 s and 59.2 s — on either side of trials that
+passed in 155 ms, which is not a shape any size effect produces. The size loop omitted the
+`wait_idle` the character-matrix loop has, so a submit landed while the agent was still busy and
+tmux **queued** it; the refusal probe's multi-megabyte pastes also ran first and left the composer
+dirty. With idle-waiting added and the refusal probe moved after the delivery probe, both pass.
+**A failure whose duration equals the timeout is a queueing artefact until proven otherwise.**
+
+### A clock that steps backwards
+
+`size-16000/literal` reported **`-494 ms`**. A negative duration is impossible by construction —
+`t0` is taken before the loop — so the wall clock moved backwards between two `date +%s%3N` calls,
+by about half a second. NTP correction on a freshly-provisioned box is the obvious candidate.
+
+Worth recording rather than discarding, because **this document's load-bearing numbers are
+timings**: the 101 ms hook round trip, the ~124 ms `Escape` interrupt, the delivery latencies below.
+Any single one of them can be off by a few hundred milliseconds in either direction on this host,
+and a timing assertion with a tight bound will flake. Measure percentiles over many trials, never
+trust one reading, and treat a negative or impossibly-small duration as a clock event rather than a
+fast path.
+
+### The probe that measured the wrong mechanism
+
+Kept because the mistake is instructive and the old rows are still in the first results file.
+
+The original size probe sent with `load-buffer` + `paste-buffer -d` and read the **composer**. Two
+independent problems:
+
+1. **It measured a mechanism the adapter does not use** — and one this same run re-confirmed loses
+   newlines. A clean result on it could never have answered the criterion.
+2. **The composer cannot answer the question.** Anything over roughly 1 000 characters collapses to
+   `[Pasted text #N]`, so all four sizes came back `collapsed_to_placeholder` with the detail
+   *"verify with chars --mode echo"* — printed by a run that **was** in echo mode, because the size
+   loop ignored the mode and never submitted anything. Its own source comment conceded the point:
+   *"only echo mode can prove the whole payload survived."*
+
+The rewrite splits the question by cost, which is what makes probing to 4 MB affordable: **"does the
+mechanism refuse this size" needs only a send and is free; "does the whole payload arrive" needs a
+submit, so the payload becomes input tokens.** 256 KB is roughly 65 000 input tokens for a single
+trial. So delivery is verified to 64 KB — already far past any real agent brief — and refusal is
+probed to 4 MB for nothing.
 
 ### Why this had to run as `agent1` — the structural reason
 
