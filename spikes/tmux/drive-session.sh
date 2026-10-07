@@ -760,8 +760,35 @@ expand() { printf '%b' "$1"; }
 # Note the transcript file does NOT exist until the first message is submitted (measured),
 # so it is re-resolved on every poll rather than cached at session start.
 
+# WHOSE HOME. The transcript is written by the AGENT, so it is in the agent user's home —
+# not the caller's. This used $HOME directly, which is correct only when SPIKE_USER is
+# empty. Under `sudo -n -u agent1` it looked in /home/office/.claude/projects, a directory
+# that does not exist, while the agent was writing to /home/agent1/.claude/projects.
+# Measured 2026-10-07 on rtdvps: the office-side run found nothing, and had it not exited
+# it would have reported every trial as `not_received` — a catastrophic-looking delivery
+# failure for payloads that had arrived perfectly.
+agent_home() {
+  if [ -n "$SPIKE_USER" ]; then
+    getent passwd "$SPIKE_USER" 2>/dev/null | cut -d: -f6
+  else
+    printf '%s' "$HOME"
+  fi
+}
+
+transcript_root() { printf '%s' "${SPIKE_CONFIG_DIR:-$(agent_home)/.claude}/projects"; }
+
+# AND WHETHER WE MAY READ IT. Resolving the right path is not enough: ~agent1 is 0750 and
+# the .jsonl files are 0600, so `office` cannot read them even when pointed at them. That
+# is not a misconfiguration — per-agent credential isolation is the reason each agent has
+# its own account. The distinction that matters to this harness is that
+# "unreadable" and "not delivered" MUST NOT produce the same row.
+transcript_readable() {
+  r="$(transcript_root)"
+  [ -d "$r" ] && [ -r "$r" ]
+}
+
 transcript_file() {
-  root="${SPIKE_CONFIG_DIR:-$HOME/.claude}/projects"
+  root="$(transcript_root)"
   slug="$(printf '%s' "$SPIKE_PROJECT_DIR" | sed -e 's/[\/.]/-/g')"
   ls -t "$root/$slug"/*.jsonl 2>/dev/null | head -n 1
 }
@@ -793,9 +820,14 @@ transcript_count() {
 
 cmd_chars() {
   mode=compose
+  sizes_only=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --mode) mode="$2"; shift 2 ;;
+      # The 36-trial matrix and the size probe are independent questions and the
+      # matrix is the expensive one. Once recorded there is no reason to pay for it
+      # again just to re-run a size probe.
+      --sizes-only) sizes_only=1; shift ;;
       *) die "chars: unknown flag $1" ;;
     esac
   done
@@ -824,11 +856,21 @@ cmd_chars() {
     return 0
   fi
 
+  # Echo mode's ground truth is the agent's transcript. If we cannot read it, every trial
+  # would come back `not_received` — 36 rows claiming total delivery failure for payloads
+  # that arrived intact. Refuse to produce them. This is the harness's own rule: report the
+  # failure as a failure, never as a measurement.
+  if [ "$mode" = "echo" ] && ! transcript_readable; then
+    s="$(session_name chars)"
+    emit chars 0 "transcript" unreadable - - "cannot read $(transcript_root) as $(id -un) — echo mode has no ground truth. $(agent_home) is likely 0750 and the .jsonl files 0600, which is per-agent credential isolation working, not a misconfiguration. Run \`chars --mode echo\` AS ${SPIKE_USER:-the agent user} with SPIKE_USER unset; the escaping and size behaviour are properties of tmux and the TUI, so no sudo in the path is not a caveat for this subcommand."
+    return 0
+  fi
+
   s="$(session_name chars)"
   start_agent "$s"
   ensure_ready "$s" chars || return 0
   n=0
-  char_variants | while IFS="$(printf '\t')" read -r name raw; do
+  [ "$sizes_only" = "1" ] || char_variants | while IFS="$(printf '\t')" read -r name raw; do
     expected="$(expand "$raw")"
     for mech in keys literal buffer buffer-bracket; do
       n=$(( n + 1 ))
@@ -895,7 +937,107 @@ cmd_chars() {
       fi
     done
   done
-  # Buffer-limit probe: ticket 007 needs the size at which a message stops arriving whole.
+  # ---------------------------------------------------------------------------------
+  # SIZE PROBE — ticket 007 needs the size at which a message stops arriving WHOLE.
+  #
+  # Two things were wrong with the only probe that existed here, both found 2026-10-07:
+  #
+  #  1. It measured `load-buffer` + `paste-buffer`, which is NOT the mechanism the adapter
+  #     uses and is one this same run re-confirmed loses a newline-bearing payload. A clean
+  #     result on it could never have answered the criterion. The adapter sends with
+  #     `send-keys -l`, so that is what gets probed first below.
+  #  2. It read the COMPOSER, which collapses anything over ~1000 chars to
+  #     `[Pasted text #N]`. Its own comment conceded only echo mode could prove the payload
+  #     survived — while the loop ignored the mode and never submitted anything.
+  #
+  # The question is "did the whole payload ARRIVE", which is the USER line in the
+  # transcript — not whether the agent echoed it back. Echoing 64 KB would cost a fortune
+  # and the model would summarise rather than repeat. So: submit, poll the transcript for
+  # the user message, then Escape the turn so the reply is never paid for.
+  if [ "$mode" = "echo" ]; then
+    for size in 1000 4000 16000 65536; do
+      for mech in literal buffer; do
+        clear_composer "$s"
+        sleep 0.2
+        # A marker at each end makes a truncation detectable even if grep -F on the whole
+        # string were ever relaxed; the body is a repeating pattern rather than one
+        # character so a dropped run of bytes cannot align with itself.
+        # Doubling, not append-by-10: at 256 KB the naive loop copies gigabytes.
+        body="$(awk -v n="$size" 'BEGIN{s="abcdefghij";while(length(s)<n)s=s s;print substr(s,1,n)}')"
+        payload="SZ${size}START${body}SZ${size}END"
+        mark="$(transcript_file)"
+        ubase="$(transcript_count "$mark" user "$payload")"
+        if ! send_text "$s" "$mech" "$payload" 2>"$RUNDIR/send-err.txt"; then
+          # This is the GOOD failure mode for 007: refused loudly rather than truncated
+          # silently. Record the size, it is the answer to the criterion for this mechanism.
+          emit chars 0 "size-$size/$mech" send_refused "$size" chars "the send mechanism refused this size outright — loud, not silent: $(head -c 160 "$RUNDIR/send-err.txt" 2>/dev/null)"
+          clear_composer "$s"
+          continue
+        fi
+        submit "$s"
+        t0="$(now_ms)"; got_user=0
+        deadline=$(( $(date +%s) + SPIKE_REPLY_TIMEOUT ))
+        while [ "$(date +%s)" -lt "$deadline" ]; do
+          tf="$(transcript_file)"
+          if [ "$tf" != "$mark" ]; then mark="$tf"; ubase=0; fi
+          if [ "$(transcript_count "$mark" user "$payload")" -gt "${ubase:-0}" ]; then
+            got_user=1; break
+          fi
+          sleep "$SPIKE_POLL"
+        done
+        ms=$(( $(now_ms) - t0 ))
+        snapshot "$s" "size-$size-$mech"
+        if [ "$got_user" = "1" ]; then
+          emit chars 0 "size-$size/$mech" delivered_whole "$ms" ms "transcript: the user message carried all $size chars byte for byte"
+        else
+          emit chars 0 "size-$size/$mech" not_delivered_whole "$ms" ms "transcript: no user message carried all $size chars — truncated, split or mangled SILENTLY, which is the failure 007 must make impossible; snapshot: $RUNDIR/panes/size-$size-$mech.txt"
+        fi
+        # Do not pay for a reply to a wall of text. Then WAIT FOR IDLE — without this a
+        # submit lands while the agent is still busy and tmux queues it, so the next
+        # trial's user line does not appear until the previous turn drains and the row
+        # reports `not_delivered_whole` after a full timeout. Measured 2026-10-07: that
+        # produced two bogus failures whose 59.9 s and 59.2 s timings gave them away,
+        # sitting either side of trials that passed in 155 ms.
+        tmux_raw send-keys -t "$s" Escape 2>/dev/null || true
+        sleep 0.4
+        wait_idle "$s" "$SPIKE_TURN_TIMEOUT" || true
+        clear_composer "$s"
+        sleep 0.3
+      done
+    done
+  fi
+
+  # Composer-only probe, kept for the compose mode it belongs to. It cannot answer the
+  # size criterion — see the block above — and says so in its own rows.
+    # TWO QUESTIONS, AND ONLY ONE OF THEM COSTS ANYTHING.
+    #
+    #   "does the mechanism REFUSE this size"  — needs only a send. Free.
+    #   "does the whole payload ARRIVE"        — needs a submit, so the payload becomes
+    #                                            input tokens. 256 KB is ~65k tokens for
+    #                                            one trial; ten such trials is ~175k on a
+    #                                            Pro account, to answer a question about
+    #                                            sizes no agent brief will ever reach.
+    #
+    # So: verify delivery up to 64 KB, which is already far beyond any real brief, and
+    # probe refusal far past it for nothing. If `send-keys -l` swallows 4 MB without
+    # complaint we have learned the tmux-layer limit is above anything that matters,
+    # without paying for a single token of it.
+    for size in 262144 1048576 4194304; do
+      for mech in literal buffer; do
+        clear_composer "$s"; sleep 0.2
+        body="$(awk -v n="$size" 'BEGIN{s="abcdefghij";while(length(s)<n)s=s s;print substr(s,1,n)}')"
+        payload="SZ${size}START${body}SZ${size}END"
+        if send_text "$s" "$mech" "$payload" 2>"$RUNDIR/send-err.txt"; then
+          emit chars 0 "refusal-$size/$mech" accepted_by_mechanism "$size" chars "the send mechanism accepted $size chars without error — NOT submitted, so whether it arrived whole is unverified at this size; this row is about the tmux layer only"
+        else
+          emit chars 0 "refusal-$size/$mech" send_refused "$size" chars "the send mechanism refused $size chars outright — loud, not silent, which is the acceptable half of ticket 007's criterion: $(head -c 160 "$RUNDIR/send-err.txt" 2>/dev/null)"
+        fi
+        clear_composer "$s"; sleep 0.2
+      done
+    done
+  # Skipped in echo mode when only sizes were asked for: the transcript rows above
+  # are strictly better, and this probe cannot answer the criterion at all.
+  [ "$mode" = "echo" ] && [ "$sizes_only" = "1" ] && { kill_session "$s"; return 0; }
   for size in 1000 4000 16000 65536; do
     clear_composer "$s"
     big="$(awk -v n="$size" 'BEGIN{s="";for(i=0;i<n;i++)s=s "x";print s}')"
@@ -909,7 +1051,7 @@ cmd_chars() {
       elif matches "$got" 'Pasted text|\[Pasted'; then
         # A large paste collapses into a placeholder. The composer no longer shows the
         # text, so only echo mode can prove the whole payload survived.
-        emit chars 0 "size-$size/buffer" collapsed_to_placeholder "$size" chars "composer shows [$got] — verify with chars --mode echo"
+        emit chars 0 "size-$size/buffer" collapsed_to_placeholder "$size" chars "composer shows [$got] — the composer CANNOT prove the payload survived at this size; the answer is the size-$size/* rows from --mode echo, which read the transcript"
       elif [ -z "$got" ] || matches "$got" "$RE_PLACEHOLDER"; then
         emit chars 0 "size-$size/buffer" lost "$size" chars "composer empty after the paste"
       else

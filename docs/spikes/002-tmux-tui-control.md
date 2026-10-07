@@ -210,16 +210,37 @@ transcript verification at increasing sizes — a harness change, not another ru
 
 
 
-`chars --mode echo` **cannot be run as `office`.** It establishes ground truth from Claude Code's
-own JSONL transcript — deliberately, because the pane renders markdown and made backticks look
-mangled when they had arrived byte for byte. That transcript lives in the agent's home:
-`/home/agent1/.claude/sessions` is mode **700**, `/home/agent1` is 750, and `office` gets
-`denied`. Per-agent credential isolation is exactly what makes the verification channel
-unreachable from the orchestrator account.
+`chars --mode echo` **cannot be run as `office`**, for two reasons stacked on top of each other.
+It establishes ground truth from Claude Code's own JSONL transcript — deliberately, because the
+pane renders markdown and made backticks look mangled when they had arrived byte for byte.
 
-So the run produced one `startup ready` row and exited nonzero: `transcript_file()` returned empty,
-and under `set -eu` the harness aborted instead of emitting an outcome — a gap in a harness whose
-whole principle is to report a failure as an outcome rather than a wrong number.
+**First, a plain bug: `transcript_file()` resolved the *caller's* `$HOME`.** It computed
+`${SPIKE_CONFIG_DIR:-$HOME/.claude}/projects`, which is right only when `SPIKE_USER` is empty.
+Under `sudo -n -u agent1` the agent wrote its transcript to
+`/home/agent1/.claude/projects/-srv-office-projects-throwaway/` — two `.jsonl` files were sitting
+there, timestamped during the run — while the harness looked in `/home/office/.claude/projects`,
+a directory that does not exist. Fixed: the home is now resolved from `SPIKE_USER` via
+`getent passwd`.
+
+**Second, and not fixable: even pointed at the right path, `office` cannot read it.** `~agent1` is
+**0750** and the transcript files are **0600**. Per-agent credential isolation is exactly what makes
+the verification channel unreachable from the orchestrator account. *(An earlier version of this
+section named `~agent1/.claude/sessions` at mode 700 as the blocker. Wrong directory — the
+transcripts are under `projects/`. The conclusion held for the wrong reason, which is worth
+correcting: someone following it would have gone to the wrong place.)*
+
+**What that combination would have produced is the real danger.** Had the office-side run not
+stopped early it would have reported **every trial as `not_received`** — thirty-six rows claiming
+total delivery failure for payloads that had arrived perfectly intact. That is precisely the class
+of wrong-but-plausible number this harness exists to avoid. So `chars --mode echo` now checks
+whether the transcript is readable *before* starting a session, and emits a single
+`transcript unreadable` row naming the path, the uid and the fix. Verified as `office`: one row, no
+session started, nothing spent.
+
+*(Why the office-side run exited nonzero after one row is **not** established. An earlier version
+of this section asserted `set -eu` aborted on the empty transcript; that is unverified and the
+`agent1` run — which also began with no transcript — completed all forty trials, which argues
+against it. Recorded as unknown rather than guessed.)*
 
 **This measurement has to run as `agent1` directly, with no sudo in the path, and that is
 legitimate:** the payload-size limit is a property of tmux's buffers and the TUI, not of sudo.

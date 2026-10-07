@@ -87,10 +87,16 @@ root. Keeping them together let "no root" hold up a measurement that never neede
       what is actually known rather than a limit nobody measured.
 - [ ] **Why (a2) cannot run as `office` — a finding, not a failure.** `chars --mode echo` takes
       ground truth from Claude Code's JSONL transcript, on purpose: the pane renders markdown and
-      once made backticks look mangled when they had arrived byte for byte. That transcript is in
-      the agent's home — `~agent1/.claude/sessions` is mode **700**, `~agent1` is 750 — so `office`
-      is denied. **Per-agent credential isolation is exactly what makes the verification channel
-      unreachable from the orchestrator account.** Running it as `agent1` with no sudo is
+      once made backticks look mangled when they had arrived byte for byte. Two walls, stacked:
+      **(i)** `transcript_file()` resolved the *caller's* `$HOME`, so under sudo it searched
+      `/home/office/.claude/projects` while the agent wrote to
+      `/home/agent1/.claude/projects/` — a plain bug, now fixed by resolving the home from
+      `SPIKE_USER`; **(ii)** even corrected, `~agent1` is 0750 and the `.jsonl` files 0600, so
+      `office` is denied. **Per-agent credential isolation is exactly what makes the verification
+      channel unreachable from the orchestrator account.** Uncorrected, the office-side run would
+      have reported all 36 trials `not_received` — total delivery failure for payloads that
+      arrived intact. `chars --mode echo` now refuses up front with one `transcript unreadable`
+      row instead, naming the path and the fix. Running it as `agent1` with no sudo is
       legitimate here and nowhere else in this re-measurement: the size and escaping behaviour are
       properties of tmux and the TUI, and `sudo -n -u` moves neither. Left unticked as a standing
       note rather than a task.
