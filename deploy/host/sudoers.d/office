@@ -1,11 +1,26 @@
 # /etc/sudoers.d/office — scoped sudo for the AI Agent Office orchestrator.
 #
 # THIS FILE IS A TEMPLATE AND MUST BE REGENERATED PER HOST.
-# The account names below are the ones the design's example uses. Whether
-# they exist on the target VPS, and which department each owns, is an open
-# question on ticket 007 and on the design itself ("Who owns which
+# The account names below are placeholders. Which department each owns is an
+# open question on ticket 007 and on the design itself ("Who owns which
 # department by default?"). Do not install this file unmodified onto a host
 # whose accounts you have not checked with `id <user>`.
+#
+# THE ACCOUNTS NAMED HERE MUST BE PURPOSE-CREATED FOR AGENTS. Never a human
+# login, and never an account in a privileged group. Measured on `rtdvps`
+# 2026-10-07, which is why this file no longer says `gluy`:
+#
+#   this file granted  office ALL=(gluy) NOPASSWD: /usr/bin/tmux
+#   on that host       gluy is a human login, and gluy is in `docker`
+#   therefore          office -> tmux as gluy -> arbitrary command (see the
+#                      DELIBERATE note below) -> docker socket -> root
+#
+# Two hops, and `provision-host.sh`'s own "office cannot run tmux as root"
+# check prints `ok` the entire time, because the escalation does not go
+# through (root) — it goes through a grant that was supposed to be harmless.
+# The design's example names were never meant to survive contact with a host
+# where one of them already belonged to someone. Groups to refuse outright:
+# docker, lxd, sudo, admin, wheel, adm. provision-host.sh now checks.
 #
 # What this grants, in one sentence: the unprivileged `office` account —
 # which the orchestrator runs as — may run /usr/bin/tmux, and only
@@ -18,7 +33,7 @@
 #   install -o root -g root -m 0440 ./office /etc/sudoers.d/office
 #   visudo -c                             # re-check the whole sudoers set
 #   sudo -u office sudo -n -l             # what office may actually do
-#   sudo -u office sudo -n -u gluy /usr/bin/tmux -V   # must print a version
+#   sudo -u office sudo -n -u agent1 /usr/bin/tmux -V # must print a version
 #
 # `visudo -c -f` is the acceptance check and it is deliberately the first
 # step: a sudoers file with a syntax error can lock every user out of sudo,
@@ -54,6 +69,12 @@
 #   only the wrapper — worth doing when the orchestrator stops being trusted
 #   code, and a change that belongs with a ticket that can test it.
 #
+#   Accepting it has a consequence that the design does not spell out, and
+#   the header above is the measured form of it: this file's privilege is
+#   exactly the union of what its named accounts can do. Granting an
+#   account here is granting everything that account has. That is why the
+#   accounts must be created for this purpose and hold nothing else.
+#
 # * The orchestrator never runs as root and this file never grants (root).
 #   The adapter refuses to start if its own uid is 0, so a misconfigured
 #   service unit fails loudly instead of quietly gaining the world.
@@ -66,10 +87,11 @@
 # ---------------------------------------------------------------------------
 
 # Dev department account. The orchestrator drives this user's agent desks.
-office ALL=(gluy)  NOPASSWD: /usr/bin/tmux
+# Purpose-created, no supplementary groups, no interactive login expected.
+office ALL=(agent1) NOPASSWD: /usr/bin/tmux
 
-# Second team account (placeholder name from the design's example).
-office ALL=(user2) NOPASSWD: /usr/bin/tmux
+# Second team account.
+office ALL=(agent2) NOPASSWD: /usr/bin/tmux
 
-# Third team account (placeholder name from the design's example).
-office ALL=(user3) NOPASSWD: /usr/bin/tmux
+# Third team account.
+office ALL=(agent3) NOPASSWD: /usr/bin/tmux

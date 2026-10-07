@@ -60,6 +60,22 @@ Source: `docs/spikes/002-tmux-tui-control.md`.
 - **So the cap ships as required config with no default, and its config comment records that it is
   unmeasured**, naming 007 as the ticket that replaces the guess. This is not a formality: 019 inherits
   this cap as its only safety property, and 029 renders it to the user as though it meant something.
+- **This ticket now owns the *loaded* RSS measurement; 007 owns only the floor.** Settled
+  2026-10-07. Pointing at 007 for the whole figure was a cycle: a real agent carries hooks and an
+  `--agent` role file, both of which are **009's** output, and MCP servers, which are this
+  ticket's — while the chain is `007 → 008 → 009 → 016 → 018`. 007 cannot measure what 009 has not
+  yet installed. So 007 measures a bare agent on the real kernel as a **floor**, and the figure the
+  cap is actually set from is measured here, by the first ticket that can load an agent to be
+  measured. Re-run `spikes/tmux/drive-session.sh rss --samples 20 --interval 1 [--midturn]` against
+  an agent provisioned by 009 and wired by 016, and record it against the host profile in
+  `docs/spikes/002-tmux-tui-control.md`.
+- **The target host is small, and that is now a measured fact rather than an assumption.** `rtdvps`,
+  surveyed 2026-10-07: **`MemTotal` 3.2 GB, `MemAvailable` 2.5 GB**, 4 threads of an i3-7100T — and
+  it must also hold the orchestrator, Postgres and a graph server per project. Against the 0.26 vs
+  0.58 GB spread above, that is the difference between roughly nine concurrent agents and roughly
+  four before anything else is counted. The global `/proc/meminfo` floor is therefore the load-
+  bearing limit on this box, not the per-project cap, and a floor configured as though there were
+  8 GB to spend would never refuse a spawn until the host was already swapping.
 
 ## Acceptance criteria
 
@@ -70,6 +86,11 @@ Source: `docs/spikes/002-tmux-tui-control.md`.
 - [ ] The queue survives an orchestrator restart with its entries and reasons intact.
 - [ ] Cap evaluation is race-free: N concurrent spawns against a cap of K start exactly K and queue the rest, asserted with a real concurrent test.
 - [ ] The memory floor is read from `/proc/meminfo` at spawn time, not cached, and a test with a stubbed reading asserts both the refusal and the recovery.
+- [ ] **The loaded RSS figure is measured and the cap is set from it.** An agent provisioned by 009
+      (hooks, `--agent` role file) and wired by 016 (MCP servers), in a real repo, sampled idle and
+      mid-turn on the target host; recorded in `docs/spikes/002-tmux-tui-control.md` against that
+      host's profile. Until this runs, the config comment keeps naming the cap unmeasured — 007's
+      bare-agent floor does not satisfy this criterion and must not be copied into the default.
 - [ ] `start_session` requires a one-line reason for the chosen model and rejects a call without one, per the design's spawn-feed requirement.
 - [ ] Spawning is non-blocking: the tool returns before the agent's first turn, and an event records what model was picked and why.
 - [ ] A lead may only spawn for owners it is permitted to spawn for; a cross-owner spawn is refused. (In step 2 there is one owner, so this is asserted against a forged argument.)

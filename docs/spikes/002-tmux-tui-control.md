@@ -19,8 +19,12 @@
 > [Carried requirement](#carried-requirement) — ticket 007 re-measures on the VPS — stands
 > unchanged.
 >
-> One criterion is still genuinely unanswerable here and is left **DEFERRED, NOT ATTEMPTED**:
-> [§7 `sudo -u` parity](#7-does-sudo--u-user-tmux--behave-identically-to-running-as-that-user--deferred-not-attempted).
+> §7 `sudo -u` parity was DEFERRED, NOT ATTEMPTED in the WSL pass and was later closed in a
+> container, 7/7 — see
+> [§7](#7-does-sudo--u-user-tmux--behave-identically-to-running-as-that-user--measured-container-all-seven-rows-green).
+> This banner said otherwise until 2026-10-07, and its anchor had not pointed at the heading since
+> the heading was renamed. A container measures permission *semantics* faithfully and timing and RSS
+> not at all, so §7 being green does not make the rest of this document a VPS reading.
 >
 > The table of [downstream exposure](#downstream-exposure) is the load-bearing part of this
 > document: it now marks which rows the WSL run closes, which it narrows, and which are still open.
@@ -49,18 +53,114 @@ the agents measured here carry no MCP servers, no hooks, no `--agent` role file 
 where real ones carry all four; and `sudo -u`, the account layout and the tmux socket topology are
 the VPS's alone.
 
+## The target host, surveyed — `rtdvps`, 2026-10-07
+
+A box was available for the first time. **No measurement in this document changed**, because the two
+things the harness needs are both still missing; what follows is the survey that establishes that,
+and the host profile every later figure will have to be read against.
+
+| | |
+| --- | --- |
+| Host | `rtdvps`, Ubuntu 26.04.1 LTS, kernel `7.0.0-34-generic` — a real kernel, not WSL2's |
+| CPU | Intel i3-7100T @ 3.40 GHz, 4 threads (2 physical cores) |
+| Memory | **`MemTotal` 3 360 800 KB (3.2 GB)**, `MemAvailable` 2 540 736 KB, 3.8 GB swap |
+| Disk | 114 GB, 11% used |
+| tmux | **3.6** (needs ≥ 3.2 for `new-session -e`) |
+| node / git | v22.23.3 / 2.53.0 |
+| Claude Code | **2.1.283 at `/usr/local/bin/claude`** — a system-wide install |
+| Login | **none.** No `~/.claude` and no `~/.claude.json` for any account |
+| `sudo` | **`gluy` may not run sudo at all** — `sudo: Sorry, user gluy may not run sudo on rtdvps` |
+| Accounts | no `office`, no agent accounts, no `/etc/sudoers.d/office`, no `/srv/office` |
+| Occupancy | five human accounts; `rtd` (uid 1000, in `sudo` and `lxd`) is the server admin and was logged in on tty1 |
+
+`doctor` was run from this login and is green on every binary it needs — `tmux`, `ps`, `awk`,
+`grep`, `sed`, `claude`, and the millisecond clock — with one row that is the whole story:
+
+```
+doctor  0  sudo  not_configured  -  -  SPIKE_USER empty: tmux runs as gluy, which is NOT what the VPS will do
+```
+
+**Three things this survey changes, none of them a number:**
+
+1. **The memory figure is the headline, and it is small.** 3.2 GB total with 2.5 GB available, on a
+   host that must also run the orchestrator, Postgres and a graph server per project. Against the
+   unresolved idle-RSS spread this document already records — 0.26 GB measured under WSL versus
+   0.57–0.58 GB for an earlier build on the same machine, see
+   [RSS across builds](#rss-across-builds--why-the-spread-matters-more-than-the-number) — the
+   difference between those two figures is the difference between roughly nine concurrent agents and
+   roughly four, before anything else on the box is counted. Ticket 018's cap cannot be guessed from
+   either end of that spread, and ticket 018's global `/proc/meminfo` floor stops being a nicety on a
+   host this size.
+2. **`claude` is not where ticket 007 said it would be.** That ticket recorded the binary as
+   per-account at `/home/<user>/.local/bin/claude`, resolved from the target user. Here it is a
+   single system-wide install and no per-account path exists. The absolute-path rule survives
+   intact — bare `claude` still dies in tmux's non-interactive shell — but the *derivation* does
+   not, and deriving it would have produced ENOENT on every spawn wearing the empty-capture symptom
+   from §4. It is host config now, alongside `TMUX_BIN`.
+3. **The shipped sudoers default would have granted root on this host.** `TMUX_AGENT_USERS`
+   defaulted to `gluy,user2,user3`; `gluy` here is a human login in the `docker` group, and this
+   document's own §7 note that full-tmux permits an arbitrary command completes the path:
+   `office` → shell as `gluy` → docker socket → root. `provision-host.sh` reported
+   "office cannot run tmux as root" as `ok` the entire time, because nothing passed through
+   `(root)`. Fixed in ticket 007: purpose-created `agent1/2/3`, and a privileged-group refusal in
+   the provisioner, verified under `dash` to reject `gluy`, `rtd` and `ronna` on this host.
+
+**Why the measurements still did not run.** They need one of two things that a non-root login
+without a Claude session cannot supply:
+
+| Half of the re-measurement | Needs | State |
+| --- | --- | --- |
+| RSS idle + mid-turn, payload-size limit | a Claude login on the box. **No root, no sudo, no `office` account** — these run as the agent's own user, because what WSL got wrong was the kernel and memory accounting | blocked on one `/login`, which costs the operator the session they are working in |
+| everything through `sudo -n -u`, and §7 on real accounts | the `office` account and `/etc/sudoers.d/office`, i.e. root | blocked on the server admin |
+
+That split is now two separate acceptance criteria on ticket 007. As one criterion, "no root" held
+up a figure that never needed root — and that figure is the one on the critical path.
+
+**A probe note, because this is the second time.** The first survey of the privileged-group refusal
+ran as an `ssh` one-liner and reported `gluy -> allowed`, missing `docker`. The guard was correct;
+the probe was not. `gluy`'s login shell on this host is **zsh**, which does not word-split an
+unquoted `$VAR`, so `for g in $PRIVILEGED_GROUPS` iterated once over the whole six-word string and
+grepped for a group of that name. `provision-host.sh` is `#!/bin/sh` → dash, where it splits.
+Re-run under `/bin/sh` the refusals are correct. This document already carries one instance of the
+same shape — a probe that tested a *wider* permission than the one granted, reporting a correct
+sudoers file as broken. **Run a probe in the shell the thing it probes runs in.**
+
 ## Running the harness on the VPS
+
+Two invocations, because ticket 007's re-measurement is two criteria with different blockers — see
+[the host survey](#the-target-host-surveyed--rtdvps-2026-10-07).
+
+**(a) Needs a Claude login and nothing else.** No root, no `office` account, no sudo in the path.
+Run as the account the agent will be:
 
 ```sh
 chmod +x spikes/tmux/drive-session.sh       # the repo may not carry the exec bit (Windows checkout)
 
-# as the office user, with the sudoers rule from ticket 007 in place
-export SPIKE_USER=gluy                      # the Linux user the agent runs as
-export SPIKE_PROJECT_DIR=/srv/throwaway     # a throwaway repo, not the orchestrator repo
-export SPIKE_CONFIG_DIR=/home/gluy/.claude  # which login the agent uses
+export SPIKE_CLAUDE=/usr/local/bin/claude   # rtdvps: system-wide install, NOT ~/.local/bin
 export SPIKE_CLAUDE_ARGS="--model sonnet"   # these trials spend real tokens; pick the cheapest
+export SPIKE_PROJECT_DIR="$HOME/spike003-tmp/proj"   # a throwaway repo, not the orchestrator repo
+# SPIKE_USER deliberately unset: no office account exists, and neither of these needs one.
+# SPIKE_CONFIG_DIR deliberately unset: $HOME already selects this account's login (GLU-44).
 
-./drive-session.sh doctor                   # prerequisites, versions, stale sessions, sudo reachability
+./drive-session.sh doctor                            # versions, stale sessions, sudo reachability
+./drive-session.sh rss   --samples 20 --interval 1   > rss-idle.tsv
+./drive-session.sh rss   --samples 20 --interval 1 --midturn > rss-midturn.tsv
+./drive-session.sh chars --mode echo                 > chars-echo.tsv
+```
+
+**(b) Needs the provisioned host.** `provision-host.sh` run as root, so `office` and the agent
+accounts exist and `/etc/sudoers.d/office` is installed:
+
+```sh
+# as the office user, with the sudoers rule from ticket 007 in place
+export SPIKE_USER=agent1                    # purpose-created; never a human login (see ticket 007)
+export SPIKE_CLAUDE=/usr/local/bin/claude
+export SPIKE_PROJECT_DIR=/srv/office/projects/throwaway
+export SPIKE_CLAUDE_ARGS="--model sonnet"
+export SPIKE_TMPDIR=/srv/office/spike003    # must be writable by SPIKE_USER: the hook runs as them
+
+./drive-session.sh doctor                   # the `sudo` row must now say ok, not not_configured
+./drive-session.sh sudo-parity
 ./drive-session.sh all --trials 20 > 003-results.tsv 2> 003-run.log
 ```
 

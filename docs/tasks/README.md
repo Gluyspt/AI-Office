@@ -220,6 +220,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `scripts/provision-user.sh` | 009 |
 | `spikes/hooks/echo-server.mjs`, `spikes/hooks/settings.spike.json` | 002 |
 | `spikes/tmux/drive-session.sh` | 003 |
+| `spikes/tmux/run-007a.sh` | 007 |
 | `spikes/mcp/probe-server.mjs` | 016 |
 | `packages/shared/package.json`, `packages/shared/tsconfig.json`, `packages/shared/src/ids.ts` | 001 |
 | `packages/shared/src/events.ts` | 005 |
@@ -265,7 +266,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 
 ## Decisions made
 
-Twelve questions the design left open have been settled and written into the tickets. Recorded here because several change behaviour the design describes differently.
+Twenty-two questions the design left open have been settled and written into the tickets. Recorded here because several change behaviour the design describes differently.
 
 | Decision | Lands in |
 | --- | --- |
@@ -289,6 +290,8 @@ Twelve questions the design left open have been settled and written into the tic
 | **Agents run least-privilege, with the permission mode set explicitly at launch.** Pre-approval comes from each role's settings allowlist; `bypassPermissions` / auto-accept is forbidden for agent sessions. Spike 003 found a bare `claude` starts in auto mode and some commands raise no dialog at all — so an inherited mode is not the conservative one, and the design's "detect the rest via the `PermissionRequest` hook" model silently stops working. | 009, 007, 027 |
 | **Ticket 007 owns the VPS re-measurement.** 003 built the tmux harness and took no readings, because WSL2 timings, memory accounting and password-prompting `sudo` would all be wrong in ways that vanish once copied into the adapter. No ticket in steps 1–3 sets up the VPS, so the criterion lands on the first ticket that needs a real Linux host. Three of 007's existing criteria cite measurements that do not exist yet and are unsatisfiable until it runs. | 007, 018 |
 | **Every HTTP endpoint in the system is `https`, including on loopback.** No plaintext listener anywhere — hook ingest, the guard endpoint, the web app and its WebSocket (`wss://`). Note this is a *transport* decision: `"type": "http"` remains the hook-config keyword, since Claude Code's hook types are `http` and `command` and there is no `https` type — only the URL scheme changes. TLS does **not** on its own fix the forgeable-ingest finding from 002, so 005 still carries a per-user token in the hook URL query string. | 005, 006, 009, 020, 022 |
+| **One shared orchestrator, one Linux user per *teammate*** — not one per agent, and not one orchestrator per person. Confirmed with a human 2026-10-07 after the phrasing "one Linux user per agent" was used loosely and queried. The design says *"Each teammate has their own Linux user for credential isolation"* (line 38) and its own example puts several desks under one user, distinguished by session name and `--agent`. **The `sudo -u` grant is the price of the shared server, not the price of isolation:** one web app must start and message agents belonging to all three teammates, and one process cannot be three Linux users. Three *private* orchestrators would need no sudo and no root — and would stop being an office, since nobody could watch, review or accept anyone else's work. | 007, 008, 009 |
+| **Agent accounts are purpose-created, and the provisioner refuses privileged ones.** The sudoers template's privilege is the union of what its named accounts hold, so granting a human login hands `office` everything that human has. Measured on `rtdvps` 2026-10-07: the shipped default named `gluy`, a login in `docker`, giving `office` → shell as `gluy` → docker socket → root in two hops while the provisioner's own root check printed `ok`. Template now names `agent1/2/3`; `provision-host.sh` refuses `docker`/`lxd`/`sudo`/`admin`/`wheel`/`adm` and uid 0. The Claude binary is **host config**, not derived from the target user — it is a system-wide `/usr/local/bin/claude` on that box. | 007, 009 |
 
 ## Still open before starting
 

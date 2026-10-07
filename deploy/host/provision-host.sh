@@ -22,7 +22,12 @@
 set -eu
 
 OFFICE_USER="${OFFICE_USER:-office}"
-TMUX_AGENT_USERS="${TMUX_AGENT_USERS:-gluy,user2,user3}"
+# Purpose-created agent accounts. NOT the design's example names: on a host
+# where one of those is a real human login, granting it below hands `office`
+# everything that human has. Measured on rtdvps 2026-10-07 — see the header
+# of deploy/host/sudoers.d/office. PRIVILEGED_GROUPS below is the check.
+TMUX_AGENT_USERS="${TMUX_AGENT_USERS:-agent1,agent2,agent3}"
+PRIVILEGED_GROUPS="${PRIVILEGED_GROUPS:-docker lxd sudo admin wheel adm}"
 PROJECT_ROOT="${PROJECT_ROOT:-/srv/office/projects}"
 TLS_DIR="${TLS_DIR:-/srv/office/tls}"
 TMUX_BIN="${TMUX_BIN:-/usr/bin/tmux}"
@@ -95,9 +100,40 @@ fi
 
 # The agent accounts. One Linux user per team member: this is what makes
 # each agent's $HOME, and therefore its Claude login, separate.
+#
+# An account that ALREADY EXISTS is the dangerous case, not the convenient
+# one. The sudoers rule below grants `office` shell-equivalent access to
+# whatever is named here, so its privilege is the union of what those
+# accounts hold. A pre-existing account holds things this script did not
+# choose: group memberships, keys, a home directory with someone's work in
+# it. On rtdvps 2026-10-07 the shipped default named `gluy`, a human login
+# in `docker` — a two-hop path to root that the root check at the bottom of
+# this script reports as `ok`, because it never passes through (root).
+#
+# So: refuse a privileged account outright, and say out loud when an
+# account was not created here.
 for u in $(agent_users); do
   if id -u "$u" >/dev/null 2>&1; then
-    ok "$u exists (uid $(id -u "$u"))"
+    uid="$(id -u "$u")"
+    if [ "$uid" -eq 0 ]; then
+      bad "$u is uid 0 — refusing to grant tmux as root"
+      continue
+    fi
+    held=""
+    for g in $PRIVILEGED_GROUPS; do
+      if id -nG "$u" 2>/dev/null | tr ' ' '\n' | grep -qx "$g"; then
+        held="$held $g"
+      fi
+    done
+    if [ -n "$held" ]; then
+      bad "$u is in privileged group(s):$held — refusing to grant tmux as $u"
+      say "granting tmux as $u gives \`office\` everything $u can do, and a"
+      say "member of$held can reach root. Use a purpose-created account."
+      continue
+    fi
+    warn "$u already existed (uid $uid) — not created by this script"
+    say "check it is an agent account, not a person's: id -nG $u; ls -la ~$u"
+    ok "$u exists (uid $uid), no privileged groups"
   else
     useradd --create-home --shell /bin/bash "$u"
     ok "created $u (uid $(id -u "$u"))"
@@ -193,10 +229,16 @@ for u in $(agent_users); do
 done
 
 # The orchestrator must never be able to reach root through this grant.
+#
+# NECESSARY, NOT SUFFICIENT: this only asks whether (root) is granted
+# directly. It cannot see a grant to an account that can itself become
+# root, which is the failure actually observed on rtdvps. The privileged-
+# group refusal in the Accounts step above is the half of this check that
+# catches that; neither is useful without the other.
 if su -s /bin/sh -c "sudo -n -u root $TMUX_BIN -V" "$OFFICE_USER" >/dev/null 2>&1; then
   bad "$OFFICE_USER can run tmux as ROOT -- the grant is too wide"
 else
-  ok "$OFFICE_USER cannot run tmux as root"
+  ok "$OFFICE_USER cannot run tmux as root (directly; see note)"
 fi
 
 # And nothing beyond tmux.
