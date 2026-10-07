@@ -49,6 +49,9 @@ HOOK_INGEST_TOKENS=linux-check-token
 TMUX_AGENT_USERS=gluy,user2,user3
 TMUX_BIN=/usr/bin/tmux
 SUDO_BIN=/usr/bin/sudo
+# Ticket 008's hook-arrival gate. Required with no default, so the config
+# path is exercised here even though the tests pass their own override.
+SESSION_HOOK_ARRIVAL_TIMEOUT_MS=15000
 ENVEOF
 
 echo

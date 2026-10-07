@@ -272,7 +272,16 @@ export interface TmuxConfig {
   readonly sudoPath: string;
   readonly commandTimeoutMs: number;
   readonly readyTimeoutMs: number;
-  readonly maxMessageBytes: number;
+  /**
+   * An operator override that can only LOWER the measured limit. Optional
+   * and with no default since 2026-10-07: tmux's own command-length limit
+   * was measured at ~16.3 KB *of whole command*, so the real maximum
+   * depends on the session name and is computed per call by
+   * `maxMessageBytesFor` in shell-quote.ts. A flat default here was 131 072
+   * — the Linux execve ceiling — which is eight times too high and cannot
+   * express the name dependency at all.
+   */
+  readonly maxMessageBytes?: number;
   readonly sessionCols: number;
   readonly sessionRows: number;
 }
@@ -291,7 +300,10 @@ const DEFAULT_TMUX_READY_TIMEOUT_MS = 120_000;
 // Linux MAX_ARG_STRLEN — a kernel ceiling, NOT a measurement of what the
 // TUI accepts. See EXECVE_ARG_BYTE_LIMIT in orchestrator/shell-quote.ts
 // for why the real limit is still unknown and why this is configurable.
-const DEFAULT_TMUX_MAX_MESSAGE_BYTES = 131_072;
+// No DEFAULT_TMUX_MAX_MESSAGE_BYTES any more. The limit is measured and
+// name-dependent (shell-quote.ts, TMUX_COMMAND_BYTE_LIMIT); a constant here
+// could only repeat it wrongly or override it upward.
+
 // Matches the geometry spike 002's harness drove the TUI at. Pane width
 // changes how Claude Code wraps its own output, and the readiness check
 // reads the pane, so this is not a free parameter.
@@ -330,12 +342,13 @@ export function loadTmuxConfig(env: NodeJS.ProcessEnv = process.env): TmuxConfig
     1,
   );
   const readyTimeoutMs = optionalInt(reader, "TMUX_READY_TIMEOUT_MS", DEFAULT_TMUX_READY_TIMEOUT_MS, 1);
-  const maxMessageBytes = optionalInt(
-    reader,
-    "TMUX_MAX_MESSAGE_BYTES",
-    DEFAULT_TMUX_MAX_MESSAGE_BYTES,
-    1,
-  );
+  // Unset means "use the measured per-session-name limit". Set means
+  // "tighten it to this"; the adapter takes the lower of the two, so this
+  // can never raise the ceiling above what tmux will actually accept.
+  const maxMessageBytes =
+    readString(reader, "TMUX_MAX_MESSAGE_BYTES") === undefined
+      ? undefined
+      : optionalInt(reader, "TMUX_MAX_MESSAGE_BYTES", 1, 1);
   const sessionCols = optionalInt(reader, "TMUX_SESSION_COLS", DEFAULT_TMUX_SESSION_COLS, 20);
   const sessionRows = optionalInt(reader, "TMUX_SESSION_ROWS", DEFAULT_TMUX_SESSION_ROWS, 5);
   finish(reader);
@@ -345,7 +358,7 @@ export function loadTmuxConfig(env: NodeJS.ProcessEnv = process.env): TmuxConfig
     sudoPath,
     commandTimeoutMs,
     readyTimeoutMs,
-    maxMessageBytes,
+    ...(maxMessageBytes === undefined ? {} : { maxMessageBytes }),
     sessionCols,
     sessionRows,
   };
@@ -381,4 +394,37 @@ export function loadLocksConfig(env: NodeJS.ProcessEnv = process.env): LocksConf
   const ttlSeconds = requiredInt(reader, "LOCK_TTL_SECONDS", 1);
   finish(reader);
   return { ttlSeconds };
+}
+
+// --- Ticket 008: the session registry ------------------------------------------
+//
+// Appended per the manifest exception in docs/tasks/README.md: a later
+// ticket may add its own self-contained `loadXConfig()`; editing an existing
+// section or the shared helpers still belongs to 004.
+
+export interface SessionsConfig {
+  /**
+   * How long `startSession` waits for the first hook event carrying the
+   * session id it chose, before marking the row `failed`.
+   *
+   * **Required, with no default.** This is not a tuning knob, it is the
+   * window in which the worst failure shape in the system is caught: an
+   * agent launched without `NODE_EXTRA_CA_CERTS` works perfectly and is
+   * completely invisible to the orchestrator, because every hook fails its
+   * TLS handshake and nothing crashes. A value chosen by nobody would
+   * decide how long the orchestrator waits before noticing it is blind.
+   *
+   * Set it from measurement, not taste. On the target host 2026-10-07 a
+   * session reached its composer in seconds, not milliseconds, and the host
+   * clock was observed stepping backwards twice — so a tight value will
+   * produce false failures. Several seconds is the right order.
+   */
+  readonly hookArrivalTimeoutMs: number;
+}
+
+export function loadSessionsConfig(env: NodeJS.ProcessEnv = process.env): SessionsConfig {
+  const reader: Reader = { env, problems: [] };
+  const hookArrivalTimeoutMs = requiredInt(reader, "SESSION_HOOK_ARRIVAL_TIMEOUT_MS", 1);
+  finish(reader);
+  return { hookArrivalTimeoutMs };
 }

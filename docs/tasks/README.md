@@ -237,7 +237,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `packages/server/src/core/app.ts`, `packages/server/src/core/server.ts`, `packages/server/src/features/events/routes/events.ts`, `packages/server/src/features/events/ingest.ts`, `packages/server/src/features/events/handler-loader.ts` | 005 |
 | `packages/server/src/features/events/bus.ts`, `packages/server/src/features/realtime/routes/ws.ts` | 006 |
 | `packages/server/src/features/orchestrator/tmux.ts`, `naming.ts`, `shell-quote.ts` | 007 |
-| `packages/server/src/features/orchestrator/sessions.ts`, `packages/server/src/features/orchestrator/routes/sessions.ts` | 008 |
+| `packages/server/src/features/orchestrator/sessions.ts`, `packages/server/src/features/orchestrator/routes/sessions.ts`, `packages/server/src/features/orchestrator/handlers/session-start.ts`, `packages/server/src/features/orchestrator/handlers/session-end.ts` | 008 |
 | `packages/server/src/features/orchestrator/provision.ts` | 009 |
 | `packages/server/src/features/chat/handlers/reply.ts`, `packages/server/src/features/chat/transcript.ts`, `packages/server/src/features/chat/conversations.ts`, `packages/server/src/features/chat/routes/chat.ts` | 010 |
 | `packages/server/src/features/tasks/states.ts`, `packages/server/src/features/tasks/model.ts` | 012 |
