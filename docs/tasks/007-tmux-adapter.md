@@ -71,9 +71,17 @@ root. Keeping them together let "no root" hold up a measurement that never neede
       delivery reliability for idle / mid-turn / permission-prompt at 20 trials each, `Escape`
       interrupt timing, the character round-trip matrix, and whether `kill-session` fires
       SessionEnd — all of which currently carry a WSL or container label.
-- [ ] `deploy/host/provision-host.sh` runs clean as root on the target host, and
-      `visudo -c -f deploy/host/sudoers.d/office` passes there. Part of (b); listed separately
-      because it is the install, not a measurement.
+- [x] `deploy/host/provision-host.sh` runs clean as root on the target host, and
+      `visudo -c -f deploy/host/sudoers.d/office` passes there. **Done 2026-10-07 on `rtdvps`.**
+      Part of (b); listed separately because it is the install, not a measurement.
+
+      Verified independently of the script's own report, by exercising the grant rather than
+      reading the file: `office` (uid 1006) and `agent1/2/3` (1007–1009) exist with **no
+      supplementary groups**; `/etc/sudoers.d/office` is `0440 root:root`; `visudo -c` passes on
+      the whole set; `office → agent1/2/3 /usr/bin/tmux` returns `tmux 3.6`; **`office → root` is
+      refused**; **`office → /bin/sh as agent1` is refused**, which is the direct test of the
+      escalation found this morning; and `sudo -n -l` as `office` lists exactly three grants and
+      nothing else. `/srv/office/{projects,tls}` exist owned by `office`.
 
 **Root became available the same day the split was made (2026-10-07), so both run together.** The
 split stands as the record of why neither could close while they were one criterion, but (a) no

@@ -48,6 +48,18 @@ None.
 - [ ] `management-lead.md` states the planning constraint from the design: during planning it is read-only, may read the repo, and may not call `start_session` for workers. (Enforcement is ticket 019; the prompt states it here.)
 - [ ] `dev-lead.md` states that it never spawns directly, only through `start_session`.
 - [ ] Provisioning refuses to write outside the target user's config directory — a test passes a traversal path and asserts rejection.
+- [ ] **Each provisioned account has a git identity.** `user.name` and `user.email` set for the
+      agent user, so `git commit` works without a flag. Found 2026-10-07 on `rtdvps`: a freshly
+      provisioned `agent1` cannot commit at all —
+      `fatal: unable to auto-detect email address (got 'agent1@rtdvps.(none)')`. Delivering work by
+      committing is the entire premise of the office, and this fails **inside an agent's turn**,
+      where a human watching the chat panel sees a confused agent rather than a host-config gap.
+      Assert it by committing as the provisioned user in a scratch repo, not by reading the config
+      back — `--global`, `/etc/gitconfig` and a repo-local value all satisfy a file check while
+      only some of them satisfy git.
+- [ ] **The identity says what it is.** An agent's commits are attributable to an account a human
+      never types into, so the name must identify the agent and the office rather than look like a
+      person — the git log is read by the whole team and by `git blame` forever.
 - [ ] The provisioner never writes a secret into the settings file; secrets are injected as environment variables at launch.
 
 - [ ] **`NODE_EXTRA_CA_CERTS` is exported into the environment every agent is launched with**, and a
