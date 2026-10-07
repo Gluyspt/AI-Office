@@ -1,0 +1,15 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	81912
+# started	2026-10-07T11:15:24Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	sudo -n -u agent1
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet
+# rundir	/srv/office/spike003/run-81912
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T11:15:25Z	chars	0	startup	ready	-	-	prompt reached

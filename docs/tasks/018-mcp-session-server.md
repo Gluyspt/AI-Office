@@ -42,21 +42,42 @@ None.
 
 Two limits, both checked at spawn time. This is the **early-stage protection against runaway spawning**, standing in for the circuit breaker until step 7 builds it.
 
-1. **Per-project max concurrent agents** — required config, no default shipped. Set from ticket 003's RSS measurement against the VPS's actual RAM.
+1. **Per-project max concurrent agents** — required config, no default shipped. Set from the RSS measurement against the VPS's actual RAM: the bare floor is ticket 007's (taken 2026-10-07), the loaded figure the cap is actually set from is this ticket's.
 2. **Global memory floor** — refuse any spawn, in any project, when available memory is below a configured threshold. A plain check against `/proc/meminfo`, not adaptive headroom management.
 
 A refused spawn is **queued, not dropped**, and the queue records which of the two limits refused it.
 
 Source: `docs/spikes/002-tmux-tui-control.md`.
 
-- **The RSS measurement this ticket's cap is meant to come from does not exist.** The ticket says the
-  per-project cap is set from ticket 003's measurement; 003 deliberately took no readings, and ticket 007
-  now owns producing them on the VPS. Until then there is no defensible number.
-- **The provisional figure is not usable as a default.** WSL measured roughly 0.26 GB process-tree RSS
-  for an idle agent — but the *previous* Claude Code build measured 0.57 to 0.58 GB on the same machine,
-  a 2x spread between two builds a day apart, and WSL2 memory accounting is not a bare VPS's. **Mid-turn
-  RSS was never measured at all**, and mid-turn is what actually determines whether the box survives N
-  concurrent agents.
+- **~~The RSS measurement this ticket's cap is meant to come from does not exist.~~ Half of it now
+  does.** 003 deliberately took no readings; ticket 007 took the **bare-agent floor** on the VPS
+  2026-10-07 (below). The figure the cap is actually set from is still missing, because it needs a
+  *loaded* agent and that is this ticket's own measurement — see the cycle note at the end of this
+  section. So: a defensible floor exists, a defensible cap does not.
+- **~~The provisional figure is not usable as a default.~~ Superseded by a VPS reading, 2026-10-07.**
+  The worry was a 2× spread: WSL measured ≈0.26 GB process-tree RSS for an idle agent while the
+  *previous* Claude Code build measured 0.57–0.58 GB on the same machine, and WSL2 memory accounting
+  is not a bare VPS's. **Measured on `rtdvps` through `sudo -n -u agent1`: ≈0.29 GB median, 0.34 GB
+  peak**, over two independent 20-sample runs that agree to within 1 MB on peak. The spread
+  resolves toward the low end — within ~10% of the WSL figure — so the 0.58 GB belonged to a
+  different *build*, not a different kernel, and WSL2's accounting was not misleading for this
+  quantity. Still a **bare-agent floor**: no MCP servers, no hooks, no role file, empty repo.
+- **Mid-turn RSS is now measured, and it did not behave as this ticket assumed.** This ticket said
+  mid-turn "is what actually determines whether the box survives N concurrent agents". Measured:
+  mid-turn peaked at **327 MB, *below* the 343 MB idle peak.** But the series was still rising
+  monotonically when the turn ended after ten samples, so that is a lower bound truncated by a
+  trivial turn — not a ceiling. **Mid-turn under real work, with tools and a large context, remains
+  unmeasured**, and is part of this ticket's loaded measurement below. Do not read the 327 MB as
+  "mid-turn is cheap"; read it as "a short turn is not where the cost is".
+- **Idle is not flat, so one sample is the wrong sample.** Both runs sit near 290 MB and spike
+  transiently to ~350 MB before falling back. A reading taken shortly after startup understates the
+  peak by roughly 20%. The cap must come from a peak over a window, not from a point.
+- **The arithmetic, with real numbers.** `MemTotal` 3 360 800 KB; `MemAvailable` **2 310 768 KB
+  (2.20 GB)** with one agent running — the figure this ticket's floor reads. At 0.34 GB peak per
+  bare agent: **≈6 bare agents.** Every remaining term reduces it — the orchestrator and Postgres
+  are not yet on the box, a graph server per project arrives at step 5, and real agents carry the
+  four things these did not. A per-project cap above 4 on this host would be optimistic, and that
+  is a statement about arithmetic, not a default: the config still ships with none.
 - **So the cap ships as required config with no default, and its config comment records that it is
   unmeasured**, naming 007 as the ticket that replaces the guess. This is not a formality: 019 inherits
   this cap as its only safety property, and 029 renders it to the user as though it meant something.
@@ -69,13 +90,13 @@ Source: `docs/spikes/002-tmux-tui-control.md`.
   measured. Re-run `spikes/tmux/drive-session.sh rss --samples 20 --interval 1 [--midturn]` against
   an agent provisioned by 009 and wired by 016, and record it against the host profile in
   `docs/spikes/002-tmux-tui-control.md`.
-- **The target host is small, and that is now a measured fact rather than an assumption.** `rtdvps`,
-  surveyed 2026-10-07: **`MemTotal` 3.2 GB, `MemAvailable` 2.5 GB**, 4 threads of an i3-7100T — and
-  it must also hold the orchestrator, Postgres and a graph server per project. Against the 0.26 vs
-  0.58 GB spread above, that is the difference between roughly nine concurrent agents and roughly
-  four before anything else is counted. The global `/proc/meminfo` floor is therefore the load-
-  bearing limit on this box, not the per-project cap, and a floor configured as though there were
-  8 GB to spend would never refuse a spawn until the host was already swapping.
+- **The target host is small, and that is now a measured fact rather than an assumption.** `rtdvps`:
+  **`MemTotal` 3.2 GB**, 4 threads of an i3-7100T — and it must also hold the orchestrator, Postgres
+  and a graph server per project. The global `/proc/meminfo` floor is therefore the load-bearing
+  limit on this box, not the per-project cap: a floor configured as though there were 8 GB to spend
+  would never refuse a spawn until the host was already swapping. Note the floor must be set against
+  `MemAvailable` **with the office already running**, which is not what was measured — the 2.20 GB
+  above was read on an otherwise idle box with one agent on it.
 
 ## Acceptance criteria
 

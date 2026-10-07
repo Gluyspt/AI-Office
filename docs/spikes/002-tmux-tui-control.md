@@ -105,6 +105,82 @@ doctor  0  sudo  not_configured  -  -  SPIKE_USER empty: tmux runs as gluy, whic
    `(root)`. Fixed in ticket 007: purpose-created `agent1/2/3`, and a privileged-group refusal in
    the provisioner, verified under `dash` to reject `gluy`, `rtd` and `ronna` on this host.
 
+## VPS readings — `rtdvps`, 2026-10-07, through `sudo -n -u agent1`
+
+The host was provisioned the same day it was surveyed, so these ran on the real path:
+`sudo_prefix sudo -n -u agent1`, `target_user agent1`, `project_dir /srv/office/projects/throwaway`,
+`--model sonnet`, claude 2.1.283, `CLAUDE_CONFIG_DIR` unset. **These are VPS figures, not WSL ones.**
+They are also **bare-agent** figures — no MCP servers, no hooks, no `--agent` role file, an empty
+repo — which is a floor, and ticket 018 owns the loaded measurement (see its Decided).
+
+### §7 `sudo -u` parity — **MEASURED (VPS), 7/7**
+
+Previously green only in a container. On the real host, all seven: `nopasswd` ok; `tmux_path`
+tmux 3.6; sockets are per-user (`/tmp/tmux-1007` vs `/tmp/tmux-1006`); the pane reports `agent1`;
+`HOME=/home/agent1` matching passwd; `CLAUDE_CONFIG_DIR` unset, as decided in GLU-44; and
+**the agent user's tmux cannot see the caller's sessions.**
+
+### §6 RSS — **MEASURED (VPS). The 2× spread is resolved, toward the low end**
+
+Two independent 20-sample idle runs, one minute apart:
+
+| | run 1 | run 2 |
+| --- | --- | --- |
+| median | 299 MB | 290 MB |
+| peak | **342 MB** | **343 MB** |
+| range | 279–351 MB | 283–351 MB |
+
+**This retires the worry recorded in [RSS across builds](#rss-across-builds--why-the-spread-matters-more-than-the-number).**
+WSL measured ≈0.26 GB and an earlier Claude Code build measured 0.57–0.58 GB on the same machine;
+the document said the spread mattered more than the number and that 018's cap must not be set from
+either end. The VPS says **≈0.29 GB median, 0.34 GB peak** — within about 10% of the WSL figure.
+So WSL2's memory accounting was *not* misleading for this particular quantity, and the 0.58 GB
+figure belonged to a different build rather than to a different kernel. Worth stating plainly
+because the inverse was assumed for two weeks.
+
+**Idle is not flat.** Both runs sit around 290 MB and then spike transiently to ~350 MB before
+falling back — run 1 at samples 11–19, run 2 at samples 10–11. A single sample taken shortly after
+startup understates the peak by roughly 20%. Any cap derived from one reading is derived from the
+wrong one.
+
+### Mid-turn RSS — **MEASURED (VPS) for the first time on any host, and it is a floor**
+
+Ten samples during a turn: 312 → 335 MB, rising monotonically, `turn_ended` at sample 10.
+**Peak 327 MB — *below* the idle peak of 343 MB.**
+
+That contradicts the assumption carried in ticket 018's Decided, that "mid-turn is what actually
+determines whether the box survives N concurrent agents". On this evidence it does not. **But the
+series had not plateaued when the turn ended**, so 327 MB is a lower bound truncated by a trivial
+ten-second turn, not a ceiling — a long or tool-heavy turn is unmeasured and may well exceed idle.
+The honest form: *mid-turn on a trivial turn does not exceed idle peak; mid-turn under real work
+remains unmeasured.*
+
+### What the cap arithmetic actually says
+
+`MemTotal` 3 360 800 KB. `MemAvailable` **2 310 768 KB (2.20 GB)** with one agent running — this is
+the figure ticket 018's floor reads. At 0.34 GB peak per bare agent that is **≈6 bare agents**, and
+every term pushes it down from there: the orchestrator and Postgres are not yet on the box, a graph
+server per project arrives at step 5, and loaded agents carry four things these did not.
+
+### Payload-size limit — **STILL DEFERRED, and now for a structural reason**
+
+`chars --mode echo` **cannot be run as `office`.** It establishes ground truth from Claude Code's
+own JSONL transcript — deliberately, because the pane renders markdown and made backticks look
+mangled when they had arrived byte for byte. That transcript lives in the agent's home:
+`/home/agent1/.claude/sessions` is mode **700**, `/home/agent1` is 750, and `office` gets
+`denied`. Per-agent credential isolation is exactly what makes the verification channel
+unreachable from the orchestrator account.
+
+So the run produced one `startup ready` row and exited nonzero: `transcript_file()` returned empty,
+and under `set -eu` the harness aborted instead of emitting an outcome — a gap in a harness whose
+whole principle is to report a failure as an outcome rather than a wrong number.
+
+**This measurement has to run as `agent1` directly, with no sudo in the path, and that is
+legitimate:** the payload-size limit is a property of tmux's buffers and the TUI, not of sudo.
+Nothing about `sudo -n -u` changes where a 1000-character paste starts collapsing into
+`[Pasted text #N]`. It is the one reading in this document for which the unwrapped path is not a
+caveat.
+
 **Why the measurements still did not run.** They need one of two things that a non-root login
 without a Claude session cannot supply:
 

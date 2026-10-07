@@ -1,0 +1,26 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	80489
+# started	2026-10-07T11:14:27Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	sudo -n -u agent1
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet
+# rundir	/srv/office/spike003/run-80489
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T11:14:27Z	doctor	0	bin:tmux	ok	-	-	/usr/bin/tmux
+2026-10-07T11:14:27Z	doctor	0	bin:ps	ok	-	-	/usr/bin/ps
+2026-10-07T11:14:27Z	doctor	0	bin:awk	ok	-	-	/usr/bin/awk
+2026-10-07T11:14:27Z	doctor	0	bin:grep	ok	-	-	/usr/bin/grep
+2026-10-07T11:14:27Z	doctor	0	bin:sed	ok	-	-	/usr/bin/sed
+2026-10-07T11:14:27Z	doctor	0	bin:claude	ok	-	-	/usr/local/bin/claude 2.1.283 (Claude Code)
+2026-10-07T11:14:27Z	doctor	0	date_ms	ok	1791371667793	ms	millisecond clock available
+2026-10-07T11:14:27Z	doctor	0	tmux_version	info	-	-	tmux 3.6 (needs >= 3.2 for new-session -e)
+2026-10-07T11:14:27Z	doctor	0	project_dir	ok	-	-	/srv/office/projects/throwaway
+2026-10-07T11:14:27Z	doctor	0	sudo	ok	-	-	passwordless sudo to agent1 for /usr/bin/tmux works
+2026-10-07T11:14:27Z	doctor	0	stale_sessions	info	0	count	existing spike003-* sessions; run cleanup to remove them
+2026-10-07T11:14:27Z	doctor	0	markers	info	-	-	ready=/\? for shortcuts|shift\+tab to cycle/ busy=/esc to interrupt/ — verify against the installed Claude Code version before trusting any row

@@ -55,22 +55,34 @@ different blockers and bundling them meant neither could close: the figure on th
 needs a Claude login on the box, and nothing else; the rest needs a provisioned host, which needs
 root. Keeping them together let "no root" hold up a measurement that never needed root.
 
-- [ ] **(a) The figures no other host can supply are measured and recorded.** Run as the agent's own
-      Linux user with no `sudo` in the path — correct for both of these, since what WSL got wrong
-      was the kernel and memory accounting, not sudo. Replaces the matching sections of
-      `docs/spikes/002-tmux-tui-control.md`:
-      **per-agent RSS of a bare agent, idle and mid-turn** — bare because nothing that would load
-      it exists yet; see the cycle below. Recorded as a **floor**, explicitly not as the cap's
-      input. Mid-turn has never been measured on any host, so even the bare figure is new. And
-      **the payload-size limit** via `chars --mode echo`, which the acceptance criterion above asks
-      for in a code comment and which cannot be scraped from the pane (≥ ~1000 chars renders as
-      `[Pasted text #N]`).
-- [ ] **(b) The `sudo -n -u` path is measured on a provisioned host.** Requires the `office`
-      account and `/etc/sudoers.d/office`, i.e. root. `drive-session.sh all --trials 20` with
-      `SPIKE_USER` set, plus `sudo-parity` for `$HOME`, `CLAUDE_CONFIG_DIR` and the tmux socket;
+- [x] **(a1) Bare-agent RSS, idle and mid-turn, on the real host.** **Done 2026-10-07**, and taken
+      through `sudo -n -u agent1` rather than the weaker unwrapped path, because root arrived the
+      same day. **Idle ≈290 MB median, 342–343 MB peak** over two independent 20-sample runs
+      agreeing to within 1 MB on peak. **Mid-turn peak 327 MB — below the idle peak**, which
+      contradicts 018's assumption, though the series had not plateaued when the turn ended, so it
+      is a truncated lower bound and not a ceiling. Recorded as a **floor**, explicitly not the
+      cap's input. Raw rows in `docs/spikes/002-vps-results/`.
+- [ ] **(a2) The payload-size limit** via `chars --mode echo` — the figure the code comment above
+      asks for, unscrapeable from the pane (≥ ~1000 chars renders as `[Pasted text #N]`).
+      **Attempted 2026-10-07 and structurally blocked as `office`, which is a finding, not a
+      failure.** `chars --mode echo` takes ground truth from Claude Code's JSONL transcript — on
+      purpose, since the pane renders markdown and once made backticks look mangled when they had
+      arrived byte for byte. That transcript is in the agent's home:
+      `~agent1/.claude/sessions` is mode **700** and `~agent1` is 750, so `office` is denied.
+      **Per-agent credential isolation is what makes the verification channel unreachable from the
+      orchestrator account.** It must run **as `agent1`, no sudo** — legitimate here and nowhere
+      else in this re-measurement, because the limit is a property of tmux's buffers and the TUI;
+      nothing about `sudo -n -u` moves where a paste collapses.
+- [x] **(b1) `sudo -u` parity on a provisioned host — 7/7.** **Done 2026-10-07**, previously green
+      only in a container. `nopasswd`; `tmux_path` 3.6; per-user sockets (`/tmp/tmux-1007` vs
+      `/tmp/tmux-1006`); pane reports `agent1`; `HOME=/home/agent1` matching passwd;
+      `CLAUDE_CONFIG_DIR` unset per GLU-44; and the agent user's tmux cannot see the caller's
+      sessions.
+- [ ] **(b2) The delivery trials through `sudo -n -u`.** `drive-session.sh all --trials 20`:
       delivery reliability for idle / mid-turn / permission-prompt at 20 trials each, `Escape`
       interrupt timing, the character round-trip matrix, and whether `kill-session` fires
-      SessionEnd — all of which currently carry a WSL or container label.
+      SessionEnd — all still carrying a WSL label. Deliberately not run in the first pass: these
+      re-measure what WSL already gave provisionally, and they are the expensive part.
 - [x] `deploy/host/provision-host.sh` runs clean as root on the target host, and
       `visudo -c -f deploy/host/sudoers.d/office` passes there. **Done 2026-10-07 on `rtdvps`.**
       Part of (b); listed separately because it is the install, not a measurement.

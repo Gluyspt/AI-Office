@@ -1,0 +1,51 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	81210
+# started	2026-10-07T11:14:52Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	sudo -n -u agent1
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet
+# rundir	/srv/office/spike003/run-81210
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T11:14:53Z	rss	0	startup	ready	-	-	prompt reached
+2026-10-07T11:14:53Z	rss	0	pane_pid	info	81234	pid	/usr/local/bin/claude --model sonnet
+2026-10-07T11:14:53Z	rss	1	idle	sample	316344	KB	process tree total
+2026-10-07T11:14:54Z	rss	2	idle	sample	283452	KB	process tree total
+2026-10-07T11:14:55Z	rss	3	idle	sample	287732	KB	process tree total
+2026-10-07T11:14:56Z	rss	4	idle	sample	289936	KB	process tree total
+2026-10-07T11:14:57Z	rss	5	idle	sample	289936	KB	process tree total
+2026-10-07T11:14:58Z	rss	6	idle	sample	289984	KB	process tree total
+2026-10-07T11:14:59Z	rss	7	idle	sample	289964	KB	process tree total
+2026-10-07T11:15:00Z	rss	8	idle	sample	289960	KB	process tree total
+2026-10-07T11:15:01Z	rss	9	idle	sample	289964	KB	process tree total
+2026-10-07T11:15:02Z	rss	10	idle	sample	351124	KB	process tree total
+2026-10-07T11:15:03Z	rss	11	idle	sample	349780	KB	process tree total
+2026-10-07T11:15:04Z	rss	12	idle	sample	292420	KB	process tree total
+2026-10-07T11:15:05Z	rss	13	idle	sample	292420	KB	process tree total
+2026-10-07T11:15:06Z	rss	14	idle	sample	288712	KB	process tree total
+2026-10-07T11:15:07Z	rss	15	idle	sample	290456	KB	process tree total
+2026-10-07T11:15:08Z	rss	16	idle	sample	288972	KB	process tree total
+2026-10-07T11:15:09Z	rss	17	idle	sample	290276	KB	process tree total
+2026-10-07T11:15:10Z	rss	18	idle	sample	290276	KB	process tree total
+2026-10-07T11:15:11Z	rss	19	idle	sample	290604	KB	process tree total
+2026-10-07T11:15:12Z	rss	20	idle	sample	290708	KB	process tree total
+2026-10-07T11:15:13Z	rss	0	idle	peak	351124	KB	highest idle sample over 20 samples
+2026-10-07T11:15:14Z	rss	1	midturn	sample	312380	KB	process tree total during a turn
+2026-10-07T11:15:15Z	rss	2	midturn	sample	311840	KB	process tree total during a turn
+2026-10-07T11:15:16Z	rss	3	midturn	sample	321344	KB	process tree total during a turn
+2026-10-07T11:15:17Z	rss	4	midturn	sample	321872	KB	process tree total during a turn
+2026-10-07T11:15:18Z	rss	5	midturn	sample	322352	KB	process tree total during a turn
+2026-10-07T11:15:19Z	rss	6	midturn	sample	322820	KB	process tree total during a turn
+2026-10-07T11:15:20Z	rss	7	midturn	sample	325580	KB	process tree total during a turn
+2026-10-07T11:15:21Z	rss	8	midturn	sample	325716	KB	process tree total during a turn
+2026-10-07T11:15:22Z	rss	9	midturn	sample	330048	KB	process tree total during a turn
+2026-10-07T11:15:23Z	rss	10	midturn	sample	334604	KB	process tree total during a turn
+2026-10-07T11:15:23Z	rss	10	midturn	turn_ended	-	-	turn finished after 10 samples
+2026-10-07T11:15:24Z	rss	0	midturn	peak	334604	KB	highest mid-turn sample
+2026-10-07T11:15:24Z	rss	0	host	memtotal	3360800	KB	MemTotal from /proc/meminfo
+2026-10-07T11:15:24Z	rss	0	host	memavailable	2310768	KB	MemAvailable at sample time — ticket 018's floor reads this

@@ -212,6 +212,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `deploy/host/sudoers.d/office` | 007 |
 | `docs/spikes/001-hook-payloads.md` | 002 |
 | `docs/spikes/002-tmux-tui-control.md` | 003 |
+| `docs/spikes/002-vps-results/*.tsv` | 007 (raw output of its re-measurement) |
 | `docs/spikes/003-mcp-wiring.md` | 016 |
 | `docs/runbooks/spine-verification.md` | 011 |
 | `docs/runbooks/coordination-verification.md` | 021 |

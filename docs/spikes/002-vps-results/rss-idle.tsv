@@ -1,0 +1,39 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	80735
+# started	2026-10-07T11:14:30Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	sudo -n -u agent1
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet
+# rundir	/srv/office/spike003/run-80735
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T11:14:31Z	rss	0	startup	ready	-	-	prompt reached
+2026-10-07T11:14:31Z	rss	0	pane_pid	info	80759	pid	/usr/local/bin/claude --model sonnet
+2026-10-07T11:14:31Z	rss	1	idle	sample	279144	KB	process tree total
+2026-10-07T11:14:32Z	rss	2	idle	sample	295376	KB	process tree total
+2026-10-07T11:14:33Z	rss	3	idle	sample	293512	KB	process tree total
+2026-10-07T11:14:34Z	rss	4	idle	sample	298312	KB	process tree total
+2026-10-07T11:14:35Z	rss	5	idle	sample	293220	KB	process tree total
+2026-10-07T11:14:36Z	rss	6	idle	sample	293240	KB	process tree total
+2026-10-07T11:14:37Z	rss	7	idle	sample	293236	KB	process tree total
+2026-10-07T11:14:38Z	rss	8	idle	sample	293232	KB	process tree total
+2026-10-07T11:14:39Z	rss	9	idle	sample	293232	KB	process tree total
+2026-10-07T11:14:40Z	rss	10	idle	sample	293780	KB	process tree total
+2026-10-07T11:14:41Z	rss	11	idle	sample	323528	KB	process tree total
+2026-10-07T11:14:42Z	rss	12	idle	sample	324376	KB	process tree total
+2026-10-07T11:14:43Z	rss	13	idle	sample	323888	KB	process tree total
+2026-10-07T11:14:44Z	rss	14	idle	sample	326736	KB	process tree total
+2026-10-07T11:14:45Z	rss	15	idle	sample	329400	KB	process tree total
+2026-10-07T11:14:46Z	rss	16	idle	sample	331112	KB	process tree total
+2026-10-07T11:14:47Z	rss	17	idle	sample	327440	KB	process tree total
+2026-10-07T11:14:48Z	rss	18	idle	sample	350608	KB	process tree total
+2026-10-07T11:14:49Z	rss	19	idle	sample	340908	KB	process tree total
+2026-10-07T11:14:50Z	rss	20	idle	sample	300596	KB	process tree total
+2026-10-07T11:14:51Z	rss	0	idle	peak	350608	KB	highest idle sample over 20 samples
+2026-10-07T11:14:51Z	rss	0	host	memtotal	3360800	KB	MemTotal from /proc/meminfo
+2026-10-07T11:14:51Z	rss	0	host	memavailable	2336584	KB	MemAvailable at sample time — ticket 018's floor reads this
