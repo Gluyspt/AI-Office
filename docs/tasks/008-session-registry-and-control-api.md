@@ -94,14 +94,37 @@ Source: `docs/spikes/001-hook-payloads.md`.
 - **`SessionStart` arrives via a `command` hook, not `http`** — it is never delivered to an `http` hook.
   Ticket 009 emits it; this ticket only needs to know the payload still arrives through 005's ingest.
 
-**Still unknown, and this ticket must not assume otherwise:** whether tmux can be trusted to hold a
-mid-turn message queue. Ticket 003 deferred that measurement and 007 now owns it. Until it is answered,
-do not build on tmux queueing — if the orchestrator must own the queue, it needs to survive a restart,
-which is a schema change rather than a refactor.
+**ANSWERED 2026-10-07, and the answer is "this ticket must own the queue" — not because tmux failed,
+but because the question is not measurable by the method that was supposed to settle it.**
+
+The measurement ran on the VPS through `sudo -n -u agent1`, 20 trials. A mid-turn message is
+**always delivered, never dropped: 20/20**, matching WSL's 8/8. That part is solid and is the part
+that matters for correctness.
+
+What is *not* solid is the classification. The harness labels a trial `interleaved` when the token
+appears while the turn is still running and `queued` when it appears after the turn ends, and it
+decides between them by comparing two pane-scraped timestamps. **The observed separation between
+those two events was ≤ 14 ms in 14 of 20 trials** (5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 8, 10, 10, 10, 11,
+14, 61, 128, 141, 151 ms) — against a **100 ms poll interval**. The distinction is being drawn an
+order of magnitude below the sampling resolution of the instrument drawing it.
+
+So WSL's `queued 8/8` and the VPS's `interleaved 20/20` are not a disagreement between hosts. They
+are the same measurement reading noise, twice, and the earlier run's label should not have been
+written down as a finding either.
+
+**Therefore: do not build on tmux queueing.** Not "tmux cannot be trusted" — *we cannot tell*, and a
+behaviour nobody can observe is not a foundation. The orchestrator owns the queue, which means it
+must survive a restart, which is a schema change rather than a refactor. Settling this by better
+instrumentation would need hook events with real timestamps (ticket 010) rather than pane polling —
+and if it ever is settled, the queue can be deleted, not retrofitted.
 
 ## Open questions
 
 - [ ] The design says "The orchestrator refuses `start_session` while paused" — the pause flag does not exist until ticket 028. The check point is stubbed here with a comment naming ticket 028.
 - [ ] Per-project session caps are mentioned ("enforce per-project caps") but no default is given. Cap enforcement lands in ticket 018 with the MCP tool; this ticket leaves a hook for it.
 - [ ] The design does not say who may kill a session belonging to another user. In step 1 there is one user, so this is deferred to step 9 (roles) — recorded so the API is not assumed safe to expose publicly.
-- [ ] Whether a message sent to a mid-turn agent is queued by us or by tmux depends on ticket 003. If we queue, the queue must survive an orchestrator restart — decide and state it.
+- [x] ~~Whether a message sent to a mid-turn agent is queued by us or by tmux depends on ticket 003.~~
+      **Decided 2026-10-07: this ticket queues, and the queue must survive an orchestrator restart.**
+      The deciding measurement cannot distinguish the two cases — see above — so the decision is
+      made on the grounds that an unobservable behaviour cannot be depended on. Delivery itself is
+      confirmed: 20/20 on the VPS, never dropped.

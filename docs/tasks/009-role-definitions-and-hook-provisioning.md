@@ -91,6 +91,30 @@ None.
       "manual mode", so the vocabulary does not map cleanly and the provisioned value must be verified
       by observing a real session, not by reading the name.
 
+      **Partly answered 2026-10-07 on the target, and the mismatch this question predicted is
+      real.** `claude --help` on the installed build (**2.1.283**) gives
+      `--permission-mode <mode>` with exactly these choices:
+
+      > `acceptEdits`, `auto`, `bypassPermissions`, `manual`, `dontAsk`, `plan`
+
+      **`default` is not among them** — so the value spike 002 saw reported in hook payloads is not
+      a value you can pass, and anything provisioned as `"default"` is naming something the CLI
+      does not accept. The build also announces on startup that **auto mode is now Claude Code's
+      default**: *"Claude checks each tool call for risky actions and prompt injection before
+      executing, runs the ones it assesses as lower-risk, and blocks the rest."*
+
+      Measured consequence: `deliver --state prompt` returned `no_dialog` on every trial under both
+      the inherited mode and `--permission-mode default`, because in auto mode Claude resolves
+      permissions itself and no dialog is raised. **`manual` is the mode that prompts.** This is the
+      concrete form of the warning above it — an inherited mode is not the conservative one — and it
+      means `dontAsk` and `auto` are both disqualifying for an agent session for the same reason
+      `bypassPermissions` is: the `PermissionRequest` hook the design relies on to mark an agent
+      blocked in the UI never fires.
+
+      Still open: which of `manual` / `acceptEdits` / `plan` is the most restrictive mode under
+      which each role's own allowlist still works, and whether the settings-file key takes the same
+      vocabulary as the flag. Both need a provisioned role, which is this ticket's own work.
+
 ## Decided
 
 - **One config directory per Linux user. `CLAUDE_CONFIG_DIR` is not used.** Each team member has

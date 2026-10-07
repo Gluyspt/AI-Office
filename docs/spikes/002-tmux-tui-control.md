@@ -162,6 +162,69 @@ the figure ticket 018's floor reads. At 0.34 GB peak per bare agent that is **�
 every term pushes it down from there: the orchestrator and Postgres are not yet on the box, a graph
 server per project arrives at step 5, and loaded agents carry four things these did not.
 
+### §1 delivery when idle — **MEASURED (VPS), 20/20 ok**
+
+Through `sudo -n -u agent1`. Reply latency p50 **2 176 ms**, p95 **2 888 ms**, min 1 449, max 5 136.
+No failures. The WSL rows for this criterion are superseded.
+
+### §2 mid-turn delivery — **MEASURED (VPS): always delivered. The queued-vs-interleaved question is NOT MEASURABLE this way**
+
+**20/20 delivered, never dropped**, matching WSL's 8/8. That is the part that matters, and it is
+solid.
+
+The classification is not. The harness labels a trial `interleaved` when the token appears while the
+turn is still running and `queued` when it appears after the turn ends, deciding between them by
+comparing two pane-scraped timestamps. Those two events were separated by **≤ 14 ms in 14 of 20
+trials**:
+
+```
+5  5  5  5  5  5  6  6  6  6  8  10  10  10  11  14  61  128  141  151   (ms)
+```
+
+**The poll interval is 100 ms.** The distinction is being drawn an order of magnitude below the
+sampling resolution of the instrument drawing it.
+
+So this document's earlier heading — "**MEASURED (WSL): queued, 8/8**" — and the VPS's
+`interleaved, 20/20` are not a disagreement between two hosts. They are the same measurement reading
+noise twice, and the WSL label should not have been recorded as a finding in the first place. Both
+runs agree on delivery; neither can speak to ordering.
+
+**Consequence, now written into ticket 008:** the orchestrator owns the mid-turn queue. Not because
+tmux failed — because nobody can observe what tmux does here, and an unobservable behaviour is not a
+foundation. Settling it would need hook events with real timestamps (ticket 010) rather than pane
+polling.
+
+### §1 delivery at a permission prompt — **NOT MEASURABLE in auto mode, which is now the default**
+
+`deliver --state prompt` returned `no_dialog` on every trial: *"no permission dialog appeared — check
+the allowlist and SPIKE_PERMISSION_PROMPT"*. The cause is not the allowlist. The agent session
+starts in **auto mode**, which the installed build announces as *"Auto mode is now Claude Code's
+default permission mode… Claude checks each tool call for risky actions and prompt injection before
+executing, runs the ones it assesses as lower-risk, and blocks the rest."* In that mode Claude
+resolves permissions itself and **no dialog is raised**, so the state this criterion measures cannot
+exist and the trial was measuring nothing.
+
+This is the same thing spike 003 recorded when it found that a bare `claude` starts in auto mode and
+some commands raise no dialog at all — and it is exactly why tickets 007/009 decided the permission
+mode must be **set explicitly at launch rather than inherited**. The measurement needs a mode that
+actually prompts.
+
+**Why this matters more than a missing row.** The finding this state exists to re-confirm is spike
+§1's worst one: *a chat message delivered while a permission dialog is up APPROVES the pending tool
+call*, 3/3, verified in the transcript and by the file the approved command created. Ticket 008 must
+gate delivery on dialog state because of it. That hazard does not go away in auto mode — it moves,
+because auto mode decides for itself and **blocks the rest**, which means dialogs still appear for
+whatever it declines to auto-run. So the criterion still needs an answer; it just cannot be obtained
+from a default-mode session.
+
+### §3 `Escape` interrupt — **MEASURED (VPS), 20/20 ok**
+
+Through `sudo -n -u agent1`, 20 trials, no failures. The session survives, as on WSL.
+
+Note the timing caveat from [the clock that steps backwards](#a-clock-that-steps-backwards): the
+~124 ms figure WSL recorded for this is within the range this host's clock can move on its own, so
+treat any single interrupt latency here as indicative.
+
 ### §4 character matrix — **MEASURED (VPS), 35/36, identical to WSL**
 
 Run as `agent1` with no sudo (see the structural reason below), transcript-verified in both

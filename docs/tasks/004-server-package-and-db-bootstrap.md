@@ -37,7 +37,15 @@ None. (`package.json` dependency additions are covered by the manifest exception
 
 ## Acceptance criteria
 
-- [ ] `pnpm migrate` against an empty database creates `schema_migrations` and `projects`, and prints each migration it applied.
+- [x] `pnpm migrate` against an empty database creates `schema_migrations` and `projects`, and
+      prints each migration it applied. **Closed 2026-10-07 on the VPS**, and by accident rather
+      than design: `docker volume ls` was empty, so compose created `ai_office_pgdata` fresh and
+      the migration ran against a genuinely empty database for the first time. It applied **6
+      migrations in filename order** — `0001_core`, `0002_events`, `0005_tasks`,
+      `0006_task_dependencies`, `0007_file_locks`, `0013_events_project_fk` — which is exactly the
+      six files on disk, the numbering gaps being unbuilt tickets rather than skipped files, and
+      produced 7 tables. A second run reported `No pending migrations.`, and the full suite then
+      passed against that freshly-migrated schema. Evidence, not inference.
 - [x] Running `pnpm migrate` a second time applies nothing and exits 0.
 - [x] A migration file that throws mid-way leaves the database unchanged and the migration unrecorded — test with a deliberately broken temporary file.
 - [x] The runner orders by filename, not by directory listing order — test with files `0002_b.sql` and `0010_a.sql` present and confirm `0002` runs first.
@@ -68,10 +76,17 @@ mid-file failure, earlier files surviving a later failure, the out-of-order warn
 `withTransaction` rolling back and committing, and `loadDatabaseConfig` refusing a missing
 `DATABASE_URL` and a non-integer pool size.
 
-**One criterion is still unticked and deliberately so:** "`pnpm migrate` against an *empty*
-database creates `schema_migrations` and `projects`". Every test above runs against the shared dev
-database, which is not empty, so the bootstrap path is exercised only by history. Closing it
-honestly needs a scratch database created and dropped per run — worth doing, not done here.
+**~~One criterion is still unticked and deliberately so.~~ Closed 2026-10-07.** The criterion was
+"`pnpm migrate` against an *empty* database creates `schema_migrations` and `projects`", and the
+problem was that every test ran against the shared dev database, which is never empty — so the
+bootstrap path was exercised only by history. It took a fresh host to close: the VPS had no Docker
+volumes at all, so compose created one and the first migration of the day ran against nothing.
+See the criterion above for what it applied.
+
+**The note it replaces is still the right advice, though.** This closed because a new machine
+happened to be empty, which is not a repeatable test. A scratch database created and dropped per
+run is still the thing that would keep it closed, and nothing does that yet — so the criterion is
+satisfied by evidence today and could silently stop being covered tomorrow.
 
 ## Open questions
 
