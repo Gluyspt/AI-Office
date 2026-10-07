@@ -1,0 +1,85 @@
+# config/hooks/fragments/ — the hook extension point
+#
+# Established by ticket 009. This file exists to keep the directory in git and
+# to carry the convention; the provisioner ignores dotfiles, so nothing here
+# reaches a settings file.
+#
+# WHY THIS DIRECTORY EXISTS
+#
+# Tickets 020 and 027 (and anything later) need their own hook entries. Without
+# this directory they would each edit config/hooks/base.settings.json, which
+# breaks one-file-one-ticket and makes two tickets unable to run in parallel.
+# Instead: drop a file in here. `base.settings.json` is never edited again.
+#
+# HOW TO ADD A HOOK
+#
+# 1. Create `config/hooks/fragments/<your-ticket-subject>.json`. Name it after
+#    what it does, not after your ticket number — the filename is what an
+#    operator reads when a hook misbehaves. Sorted filename order is the merge
+#    order, and it is stable, so a fragment that must run before another can be
+#    named to say so.
+#
+# 2. Put a settings-shaped object in it. Only `hooks` and `permissions.allow`
+#    are merged; anything else is refused loudly rather than silently dropped,
+#    so a fragment cannot quietly change a permission mode, a model, or the
+#    environment of every agent in the office.
+#
+#        {
+#          "hooks": {
+#            "PreToolUse": [
+#              {
+#                "matcher": "Edit|Write|NotebookEdit",
+#                "hooks": [
+#                  {
+#                    "type": "command",
+#                    "command": "${REPO_ROOT}/hooks/pretooluse-guard.sh",
+#                    "timeout": 2
+#                  }
+#                ]
+#              }
+#            ]
+#          }
+#        }
+#
+# 3. Re-run `scripts/provision-user.sh <user>` for every account, and RESTART
+#    every running agent. Hook config is read once at launch — there is no hot
+#    reload (spike 001 §8.2). A re-provisioned hook does not reach a live
+#    session, and the session will keep looking healthy while it ignores you.
+#
+# MERGE RULES (asserted by provision.test.ts)
+#
+# - Arrays CONCATENATE, they never replace. base.settings.json's entries come
+#   first, then each fragment in sorted filename order. Two fragments
+#   registering for the same event both survive, and both of their hooks run —
+#   Claude Code runs the hooks of one event group concurrently, so adding one
+#   costs its own duration, not the sum.
+# - An entry that is byte-identical to one already merged is dropped, so
+#   re-provisioning is idempotent and a fragment duplicating a base entry
+#   cannot double-post an event.
+# - `permissions.allow` entries are unioned, de-duplicated, and sorted.
+#
+# PLACEHOLDERS
+#
+# These are substituted at provision time. An unknown `${...}` is a hard error:
+# a placeholder that silently rendered empty would produce a hook that posts to
+# the wrong place, or a guard script path of "/hooks/guard.sh".
+#
+#   ${EVENT_SERVER_ORIGIN}  https origin of the event server, no trailing slash
+#   ${HOOK_INGEST_TOKEN}    this account's ingest token (goes in the query string)
+#   ${CA_CERT_PATH}         the certificate agents trust, i.e. NODE_EXTRA_CA_CERTS
+#   ${REPO_ROOT}            this repo's checkout on the host
+#   ${USER_HOME}            the target account's home directory
+#   ${TARGET_USER}          the target account's name
+#
+# TWO THINGS A FRAGMENT CANNOT DO
+#
+# - `SessionStart` must stay a `command` hook. HTTP hooks are never dispatched
+#   for it — reproduced five times in spike 001 §7, and the installed build says
+#   so in as many words ("HTTP hooks are not supported for SessionStart"). The
+#   base template owns that entry; a fragment adding an `http` SessionStart hook
+#   would be accepted by the merge and then never fire.
+# - A `command` hook inherits the agent's launch environment, which carries
+#   $NODE_EXTRA_CA_CERTS, $OFFICE_EVENT_SERVER_ORIGIN and
+#   $OFFICE_HOOK_INGEST_TOKEN. It does NOT get a shell profile: tmux runs the
+#   command through a non-interactive shell, so anything from ~/.bashrc or
+#   ~/.local/bin is not on PATH. Name binaries by absolute path.

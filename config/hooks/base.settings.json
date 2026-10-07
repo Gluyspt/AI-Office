@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "//": "TEMPLATE, not a live settings file. Rendered into each agent account's own ~/.claude/office.settings.json by packages/server/src/features/orchestrator/provision.ts (run it through scripts/provision-user.sh). Do NOT add hook entries here: drop a fragment into config/hooks/fragments/ instead — see that directory's .gitkeep. Placeholders ${EVENT_SERVER_ORIGIN}, ${HOOK_INGEST_TOKEN}, ${CA_CERT_PATH}, ${REPO_ROOT}, ${USER_HOME} and ${TARGET_USER} are substituted at provision time; an unknown ${...} is a hard error, never an empty string. On permissions.defaultMode: 'manual' is the one mode that still raises permission prompts. On 2.1.283 --permission-mode takes acceptEdits|auto|bypassPermissions|manual|dontAsk|plan, `auto` is now the CLI default, and auto/dontAsk/bypassPermissions all resolve permissions without asking — which silently removes the PermissionRequest hook the design uses to mark an agent blocked in the UI. In this settings key the canonical spelling is 'default' with 'manual' an accepted alias for it (checked against the installed build's own schema); 'manual' is written because the word 'default' in a config file now means `auto`, the opposite of what the line is for. permissions.allow is deliberately empty: step 1 has a human watching and relies on the PermissionRequest hook, and the real per-role allowlists are an open question on ticket 009.",
+  "permissions": {
+    "defaultMode": "manual",
+    "allow": []
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "${EVENT_SERVER_ORIGIN}/events/reply?token=${HOOK_INGEST_TOKEN}",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "${EVENT_SERVER_ORIGIN}/events/failure?token=${HOOK_INGEST_TOKEN}",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "${EVENT_SERVER_ORIGIN}/events/tool?token=${HOOK_INGEST_TOKEN}",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "${EVENT_SERVER_ORIGIN}/events/permission?token=${HOOK_INGEST_TOKEN}",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -fsS -o /dev/null --max-time 4 --cacert \"$NODE_EXTRA_CA_CERTS\" -H 'Content-Type: application/json' --data-binary @- '${EVENT_SERVER_ORIGIN}/events/start?token=${HOOK_INGEST_TOKEN}' || exit 1",
+            "timeout": 5,
+            "statusMessage": "Reporting session start to the office…"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "${EVENT_SERVER_ORIGIN}/events/end?token=${HOOK_INGEST_TOKEN}",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "${EVENT_SERVER_ORIGIN}/events/compact?token=${HOOK_INGEST_TOKEN}",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostModelSwitch": [
+      {
+        "hooks": [
+          {
+            "type": "http",
+            "url": "${EVENT_SERVER_ORIGIN}/events/model?token=${HOOK_INGEST_TOKEN}",
+            "timeout": 2
+          }
+        ]
+      }
+    ]
+  }
+}

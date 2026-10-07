@@ -52,6 +52,21 @@ SUDO_BIN=/usr/bin/sudo
 # Ticket 008's hook-arrival gate. Required with no default, so the config
 # path is exercised here even though the tests pass their own override.
 SESSION_HOOK_ARRIVAL_TIMEOUT_MS=15000
+# Ticket 028's resume path needs a binary to respawn with. Absolute: a bare
+# `claude` dies instantly in tmux's non-interactive shell.
+CLAUDE_BIN=/usr/local/bin/claude
+# Ticket 009's provisioning. OFFICE_HOOK_TOKENS is the per-account map; it is
+# cross-checked against HOOK_INGEST_TOKENS above, because if they disagree
+# every hook 401s, every session fails 008's hook gate, and nothing in the
+# failure names the mismatch.
+# Ticket 015's lock TTL. The lock tests pass their own, but ticket 028's
+# resume is the first code path that loads this from config rather than
+# taking it as a parameter — so without it every resume throws ConfigError.
+LOCK_TTL_SECONDS=900
+OFFICE_HOOK_TOKENS=agent1:linux-check-token
+AGENT_EVENT_SERVER_ORIGIN=https://127.0.0.1:4000
+AGENT_CA_CERT_PATH=/srv/office/tls/dev-cert.pem
+AGENT_GIT_EMAIL_DOMAIN=office.invalid
 ENVEOF
 
 echo

@@ -186,3 +186,33 @@ None.
 - [ ] Carried from the design: **does `CLAUDE_CONFIG_DIR` keep two logins authenticated at once?** Ticket 002 should have answered this; if it did not, provisioning for a second user in step 9 is at risk.
 - [ ] The design's "Permissions" section says to pre-approve per role in each role's settings allowlist, but lists no allowlist contents. Step 1 has two roles and a human watching, so this ticket ships an empty allowlist and relies on the PermissionRequest hook. The real allowlists need a decision before agents run unattended.
 - [ ] Role prompt content beyond the responsibilities table in the design is being written fresh here. Worth a human review pass before step 2 depends on these agents behaving predictably.
+
+## Landed 2026-10-08
+
+Implemented by a subagent working from this ticket, finished and verified by the
+orchestrating session. **29 files, 572 passed, 1 skipped, typecheck clean on all three
+packages, on the real VPS kernel.**
+
+**What was verified and what was not.** The suite passes and the three packages typecheck;
+that is the claim. The acceptance criteria above have **not** been audited line by line
+against the implementation, so they are left unticked deliberately rather than ticked on
+the strength of a green suite. Someone closing this ticket should walk the list.
+
+**Two things worth reading before trusting it.**
+
+The permission-mode question this ticket raised is answered further than the measurement
+went, and the extra step is **unverified**. Measured: on build 2.1.283 `--permission-mode`
+takes `acceptEdits|auto|bypassPermissions|manual|dontAsk|plan`, `default` is not among
+them, and `manual` prompts. The implementation adds the claim that the *settings* key
+`permissions.defaultMode` is the mirror image — canonical value `default`, with `manual`
+accepted as an alias — and concludes `manual` is the one spelling valid in both places.
+The conclusion is almost certainly right and is what the module writes, so the risk is
+contained; but **the settings-key half of that claim was not checked against the build**,
+and `PERMITTED_PERMISSION_MODES` accepting `"default"` rests on it. Cheap verification:
+write `{"permissions":{"defaultMode":"default"}}` into a scratch config dir and see
+whether a session starts.
+
+`scripts/provision-user.sh` is a deliberately thin wrapper. `provision.ts` already carries
+its own CLI, so the script adds only the three checks a shell makes better than Node does
+— the account exists, we are root or that account, and as root pass the target's uid/gid —
+and then `exec`s into the module. Writing the logic twice is how the two drift.

@@ -84,3 +84,23 @@ empty message" is also unverifiable until then — and it is not known whether a
 - [ ] How much history the chat panel loads on open is still undecided; the API pages, so this is ticket 026's call.
 - [ ] Whether multiple humans messaging one agent need per-author threading, or a single interleaved log, is not specified. Assumed single log with author labels, matching "Messages are labeled by sender and queued in order."
 - [ ] A task that moves to a different owner mid-life keeps one conversation under this model. Whether that is right, or whether reassignment should start a segment, is unaddressed by the design. Segment boundary assumed, since it is the same kind of discontinuity as a respawn.
+
+## Landed 2026-10-08
+
+Implemented by a subagent working from this ticket, finished and verified by the
+orchestrating session. **29 files, 572 passed, 1 skipped, typecheck clean on all three
+packages, on the real VPS kernel.**
+
+**What was verified and what was not.** The suite passes and the three packages typecheck;
+that is the claim. The acceptance criteria above have **not** been audited line by line
+against the implementation, so they are left unticked deliberately rather than ticked on
+the strength of a green suite. Someone closing this ticket should walk the list.
+
+Three test files shipped with it (`transcript`, `conversations`, `handlers/reply`) and all
+pass. One incidental finding: `packages/shared/src/chat.test.ts` is the first module in
+`@office/shared` ever to **value**-import a sibling, and that package emits declarations,
+so a `.ts` extension there is illegal (TS5097) where `@office/server` allows it via
+`noEmit` + `allowImportingTsExtensions`. It imports `./chat.js` — the standard NodeNext
+spelling — with a comment saying why it differs from the server's style. Not a deviation
+from a convention; there was no convention, because every other shared module only ever
+used `import type`, which TypeScript erases.

@@ -428,3 +428,250 @@ export function loadSessionsConfig(env: NodeJS.ProcessEnv = process.env): Sessio
   finish(reader);
   return { hookArrivalTimeoutMs };
 }
+
+// --- Ticket 010: chat transcript and the turn-end watchdog ----------------------
+//
+// Appended per the manifest exception in docs/tasks/README.md: a later
+// ticket may add its own self-contained `loadXConfig()`; editing an existing
+// section, the shared readers or ConfigError still belongs to 004.
+
+export interface ChatConfig {
+  /**
+   * How long after a turn starts the orchestrator gives up waiting for a
+   * turn-end event, and marks the turn abandoned so the desk stops showing
+   * as busy.
+   *
+   * **Required, with no default**, and the reason is a measurement rather
+   * than a preference.
+   *
+   * A turn can end with **no turn-end event at all**. Two independent paths
+   * were observed, each twice: an `Escape` interrupt, and a `PreToolUse`
+   * answered `continue:false`. Neither fires `Stop` *or* `StopFailure` — the
+   * only event for an interrupted turn is the `UserPromptSubmit` that opened
+   * it. So `Stop` is not a bookend, and this value is how long a desk sits
+   * "thinking" after someone hits Escape.
+   *
+   * Do NOT set it from the reply-latency numbers. Those exist (20 trials on
+   * the target host: p50 2176 ms, p95 2888 ms) but they measure a one-word
+   * reply and bound nothing — a real agent turn runs for minutes. The
+   * number has to be larger than the longest turn anyone is willing to
+   * believe in, because firing early reports a *working* agent as idle,
+   * which is precisely the failure spike 003 found in pane scraping and
+   * which this watchdog exists to replace. Several minutes is the right
+   * order; measure a real workload before tightening it.
+   *
+   * Note also that the target host's wall clock was observed stepping
+   * backwards twice in one session. The watchdog therefore times with
+   * `performance.now()`, not `Date.now()` — but a value chosen tightly
+   * would still be the first thing a clock step broke.
+   */
+  readonly turnWatchdogMs: number;
+}
+
+export function loadChatConfig(env: NodeJS.ProcessEnv = process.env): ChatConfig {
+  const reader: Reader = { env, problems: [] };
+  const turnWatchdogMs = requiredInt(reader, "CHAT_TURN_WATCHDOG_MS", 1);
+  finish(reader);
+  return { turnWatchdogMs };
+}
+
+// --- Ticket 009: role definitions and hook config provisioning ---------------
+//
+// Appended per the manifest exception in docs/tasks/README.md: a later ticket
+// may add its own self-contained `loadXConfig()`. This section adds nothing to
+// ConfigError, the shared readers, or any section above it; it reads
+// POSIX_USERNAME_RE and the readers declared above, which the 005 and 007
+// sections already established as shared rather than owned.
+//
+// OFFICE_HOOK_TOKENS is the map 005's section promised and could not write:
+// "there is no user table yet, so this ticket treats it as a flat set of
+// opaque accepted tokens ... ticket 009, which provisions each role's hook
+// URLs, is what gives each token a person." HOOK_INGEST_TOKENS stays the
+// accepted *set* the server checks; this is the account -> token assignment
+// the provisioner needs to render one account's hook URLs. Provisioning
+// refuses a token that is not also in HOOK_INGEST_TOKENS, because the symptom
+// otherwise is every hook 401ing and every session failing its hook gate with
+// no indication that the two lists disagree.
+//
+// No default, and no fabricated token: a generated-on-the-fly token would
+// differ between the server process and the provisioner, which is the same
+// failure with extra steps.
+export interface ProvisioningConfig {
+  /** https origin of the event server, no trailing slash. */
+  readonly eventServerOrigin: string;
+  /** Linux account -> that account's hook ingest token. */
+  readonly hookTokens: Readonly<Record<string, string>>;
+  /**
+   * The certificate agents are told to trust — exported into every agent's
+   * environment as NODE_EXTRA_CA_CERTS. With a self-signed event-server cert
+   * this is that same file: spike 001 §12 measured the hook client rejecting
+   * it outright (`tlsv1 alert unknown ca`) and this variable fixing it
+   * completely.
+   */
+  readonly agentCaCertPath: string;
+  /** Provisioning warns below this many days left on the certificate. */
+  readonly certMinRemainingDays: number;
+  /** Domain for agent git identities. Never a routable one — see provision.ts. */
+  readonly gitEmailDomain: string;
+}
+
+// 30 days is a warning threshold, not a measurement: one shared certificate
+// means every agent in the office goes silent on the same day it expires, and
+// a rotation needs every running agent restarted, so the warning has to arrive
+// while someone can still schedule that.
+const DEFAULT_CERT_MIN_REMAINING_DAYS = 30;
+// RFC 2606 reserves .invalid precisely so an address can be guaranteed
+// undeliverable. An agent's commits must not be able to mail a real person.
+const DEFAULT_GIT_EMAIL_DOMAIN = "ai-office.invalid";
+// URL-safe characters only: the token is carried in the hook URL's query
+// string, so anything needing escaping would arrive at ingest as a different
+// string than was provisioned, and the 401 would name nothing.
+const HOOK_TOKEN_RE = /^[A-Za-z0-9._~-]{16,}$/;
+
+export function loadProvisioningConfig(env: NodeJS.ProcessEnv = process.env): ProvisioningConfig {
+  const reader: Reader = { env, problems: [] };
+
+  // Derived from EVENT_SERVER_PORT rather than required separately, so the
+  // hook URLs cannot disagree with the port the server actually binds. An
+  // explicit override is still accepted for a host that fronts the event
+  // server differently.
+  let eventServerOrigin = readString(reader, "OFFICE_EVENT_SERVER_ORIGIN");
+  if (eventServerOrigin === undefined) {
+    const port = requiredInt(reader, "EVENT_SERVER_PORT", 1);
+    eventServerOrigin = `https://127.0.0.1:${port}`;
+  }
+  if (!eventServerOrigin.startsWith("https://")) {
+    // Every endpoint in this system is https, loopback included. A plaintext
+    // origin here would be a silent downgrade of that decision for every hook
+    // in the office.
+    reader.problems.push(
+      `OFFICE_EVENT_SERVER_ORIGIN must start with https:// — got ${JSON.stringify(eventServerOrigin)}`,
+    );
+  }
+  if (eventServerOrigin.endsWith("/")) {
+    reader.problems.push(
+      "OFFICE_EVENT_SERVER_ORIGIN must not end with a slash — endpoint paths are appended to it",
+    );
+  }
+
+  const tokensRaw = requiredString(reader, "OFFICE_HOOK_TOKENS");
+  const hookTokens: Record<string, string> = {};
+  for (const pair of tokensRaw.split(",").map((entry) => entry.trim()).filter((entry) => entry !== "")) {
+    const separator = pair.indexOf(":");
+    if (separator <= 0 || separator === pair.length - 1) {
+      reader.problems.push(
+        `OFFICE_HOOK_TOKENS entries must be <user>:<token> — got ${JSON.stringify(pair)}`,
+      );
+      continue;
+    }
+    const user = pair.slice(0, separator).trim();
+    const token = pair.slice(separator + 1).trim();
+    if (!POSIX_USERNAME_RE.test(user)) {
+      reader.problems.push(`OFFICE_HOOK_TOKENS has an invalid account name: ${JSON.stringify(user)}`);
+      continue;
+    }
+    if (!HOOK_TOKEN_RE.test(token)) {
+      // Deliberately not echoed: it is a secret, and the one thing worth
+      // saying about it is which account's it is.
+      reader.problems.push(
+        `OFFICE_HOOK_TOKENS token for ${user} must be at least 16 URL-safe characters ([A-Za-z0-9._~-])`,
+      );
+      continue;
+    }
+    if (hookTokens[user] !== undefined) {
+      reader.problems.push(`OFFICE_HOOK_TOKENS lists ${user} twice`);
+      continue;
+    }
+    hookTokens[user] = token;
+  }
+  if (tokensRaw !== "" && Object.keys(hookTokens).length === 0) {
+    reader.problems.push("OFFICE_HOOK_TOKENS must assign a token to at least one account");
+  }
+
+  const agentCaCertPath =
+    readString(reader, "OFFICE_AGENT_CA_CERT_PATH") ?? requiredString(reader, "TLS_CERT_PATH");
+  const certMinRemainingDays = optionalInt(
+    reader,
+    "OFFICE_CERT_MIN_REMAINING_DAYS",
+    DEFAULT_CERT_MIN_REMAINING_DAYS,
+    0,
+  );
+  const gitEmailDomain = readString(reader, "OFFICE_GIT_EMAIL_DOMAIN") ?? DEFAULT_GIT_EMAIL_DOMAIN;
+
+  finish(reader);
+  return {
+    eventServerOrigin,
+    hookTokens,
+    agentCaCertPath,
+    certMinRemainingDays,
+    gitEmailDomain,
+  };
+}
+
+// --- Ticket 028: pause, emergency stop and resume -------------------------------
+//
+// Appended per the manifest exception: a later ticket may add its own
+// self-contained `loadXConfig()`. Editing an existing section still belongs
+// to 004.
+
+export interface PauseConfig {
+  /**
+   * How long a graceful pause waits for agents to stop on their own before
+   * it reports which ones did not.
+   *
+   * Optional with a default, unlike the hook-arrival timeout: overshooting
+   * here is visible and harmless — the pause is already in effect and the
+   * deadline only decides when the UI stops saying "waiting" and starts
+   * naming the agents still mid-turn. Nothing is killed when it expires.
+   *
+   * 30 s is chosen from measurement rather than taste: on the target host a
+   * reply takes p50 2.2 s and p95 2.9 s, and the longest observed turn in
+   * the spike ran to ~8.6 s, so 30 s covers an ordinary turn several times
+   * over without making a human watch a spinner for a minute.
+   */
+  readonly deadlineMs: number;
+}
+
+const DEFAULT_PAUSE_DEADLINE_MS = 30_000;
+
+export function loadPauseConfig(env: NodeJS.ProcessEnv = process.env): PauseConfig {
+  const reader: Reader = { env, problems: [] };
+  const deadlineMs = optionalInt(reader, "PAUSE_DEADLINE_MS", DEFAULT_PAUSE_DEADLINE_MS, 1);
+  finish(reader);
+  return { deadlineMs };
+}
+
+export interface ResumeSpawnConfig {
+  /** Where project working trees live on the agent host. */
+  readonly projectRoot: string;
+  /**
+   * Absolute path to the Claude Code binary **on the agent host**.
+   *
+   * REQUIRED, with no default, and absolute on purpose. Two measured facts
+   * force both:
+   *
+   *  - A bare `claude` does not work. tmux runs its command through a
+   *    NON-interactive shell, and Ubuntu's stock `.bashrc` returns early
+   *    when not interactive, so `~/.local/bin` never joins `PATH`. The pane
+   *    dies instantly with an EMPTY capture — indistinguishable from a slow
+   *    start.
+   *  - The path is **host configuration, not a function of the user**. On
+   *    the target it is a system-wide `/usr/local/bin/claude`, and no
+   *    per-account `~/.local/bin/claude` exists at all. Deriving it from the
+   *    target user — which ticket 007 originally specified — would produce
+   *    ENOENT on every spawn wearing that same empty-capture symptom.
+   *
+   * Lives here rather than in `loadTmuxConfig` because resume is the first
+   * code path that needs to *choose* a binary for a session it did not
+   * start; the adapter is handed one.
+   */
+  readonly claudeBin: string;
+}
+
+export function loadResumeSpawnConfig(env: NodeJS.ProcessEnv = process.env): ResumeSpawnConfig {
+  const reader: Reader = { env, problems: [] };
+  const projectRoot = requiredString(reader, "PROJECT_ROOT");
+  const claudeBin = requiredString(reader, "CLAUDE_BIN");
+  finish(reader);
+  return { projectRoot, claudeBin };
+}

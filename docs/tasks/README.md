@@ -218,7 +218,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `docs/runbooks/coordination-verification.md` | 021 |
 | `docs/runbooks/step3-acceptance.md` | 030 |
 | `hooks/pretooluse-guard.sh` | 020 |
-| `scripts/provision-user.sh` | 009 |
+| `scripts/provision-user.sh`, `agents/management-lead.md`, `agents/dev-lead.md`, `config/hooks/base.settings.json`, `config/hooks/fragments/.gitkeep`, `packages/server/src/features/orchestrator/provision.ts` | 009 |
 | `spikes/hooks/echo-server.mjs`, `spikes/hooks/settings.spike.json` | 002 |
 | `spikes/tmux/drive-session.sh` | 003 |
 | `spikes/tmux/run-007a.sh`, `spikes/tmux/run-007b.sh` | 007 |

@@ -60,3 +60,32 @@ None.
 - [ ] Resume "with the handoff node" is likewise inert until step 5. Resume respawns with the task brief only.
 - [ ] The design places the Pause and Emergency stop controls on the Company overview page, which is not built in step 3. Ticket 029 puts them on their own route instead.
 - [ ] Whether a paused project should also tear down preview environments is unspecified; previews are step 8.
+
+## Landed 2026-10-08
+
+Implemented by a subagent working from this ticket, finished and verified by the
+orchestrating session. **29 files, 572 passed, 1 skipped, typecheck clean on all three
+packages, on the real VPS kernel.**
+
+**What was verified and what was not.** The suite passes and the three packages typecheck;
+that is the claim. The acceptance criteria above have **not** been audited line by line
+against the implementation, so they are left unticked deliberately rather than ticked on
+the strength of a green suite. Someone closing this ticket should walk the list.
+
+**`resumeTask` refuses a single task while a project pause covers it**, naming the remedy
+("resume the project instead") rather than half-resuming. I wrote two tests that assumed
+the opposite and both were wrong: resuming one task under an office-wide pause would
+restart an agent inside a pause still in effect — the board would show one task moving
+while everything else is held, and `start_session` would still be refused for it. The
+tests now assert the refusal, and cover the per-task path with no project pause behind it,
+which is the crash / rate-limit case.
+
+**`scope.projectId` comes back populated when resuming by task**, not null: resume knows
+which project the task belongs to and a caller rendering the result should not have to
+look it up again. I asserted null and was wrong about that too.
+
+**One environment gap this ticket surfaced:** resume is the first code path that loads
+`loadLocksConfig()` from configuration rather than taking a TTL as a parameter, so
+`LOCK_TTL_SECONDS` became required in the test environment and is now set in
+`deploy/linux-check/run.sh`. The lock suite passes its own TTL, which is why nothing had
+needed it before.
