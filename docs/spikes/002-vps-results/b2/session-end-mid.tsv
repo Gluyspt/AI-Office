@@ -1,0 +1,24 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	251889
+# started	2026-10-07T12:54:35Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	sudo -n -u agent1
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet
+# rundir	/srv/office/spike003/run-251889
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T12:54:36Z	session-end	0	startup	ready	-	-	prompt reached
+2026-10-07T12:54:40Z	session-end	1	midturn	fired	168	ms	1791377680821 SessionEnd {"session_id":"f610da53-ae30-4b49-ad56-1d786cb5490a","transcript_path":"/home/agent1/.claude/projects/-srv-office-projects-throwaway/f610da53-ae30-4b49-ad56-1d786cb5490a.jsonl","cwd":"/srv/office/projects/throwaway","scratchpad_dir":"/tmp/claude-1007/-srv-office-projects-thr
+2026-10-07T12:54:42Z	session-end	0	startup	ready	-	-	prompt reached
+2026-10-07T12:54:46Z	session-end	2	midturn	fired	142	ms	1791377686715 SessionEnd {"session_id":"24586aaa-738e-45fd-87ff-3c88ca04003b","transcript_path":"/home/agent1/.claude/projects/-srv-office-projects-throwaway/24586aaa-738e-45fd-87ff-3c88ca04003b.jsonl","cwd":"/srv/office/projects/throwaway","scratchpad_dir":"/tmp/claude-1007/-srv-office-projects-thr
+2026-10-07T12:54:47Z	session-end	0	startup	ready	-	-	prompt reached
+2026-10-07T12:54:52Z	session-end	3	midturn	fired	165	ms	1791377692552 SessionEnd {"session_id":"cf1ae691-8314-402a-a861-c85874604b9f","transcript_path":"/home/agent1/.claude/projects/-srv-office-projects-throwaway/cf1ae691-8314-402a-a861-c85874604b9f.jsonl","cwd":"/srv/office/projects/throwaway","scratchpad_dir":"/tmp/claude-1007/-srv-office-projects-thr
+2026-10-07T12:54:53Z	session-end	0	startup	ready	-	-	prompt reached
+2026-10-07T12:54:58Z	session-end	4	midturn	fired	145	ms	1791377698453 SessionEnd {"session_id":"eddc8b97-4143-465d-8964-9acf7c59e298","transcript_path":"/home/agent1/.claude/projects/-srv-office-projects-throwaway/eddc8b97-4143-465d-8964-9acf7c59e298.jsonl","cwd":"/srv/office/projects/throwaway","scratchpad_dir":"/tmp/claude-1007/-srv-office-projects-thr
+2026-10-07T12:54:59Z	session-end	0	startup	ready	-	-	prompt reached
+2026-10-07T12:55:04Z	session-end	5	midturn	fired	151	ms	1791377704282 SessionEnd {"session_id":"64b7ee5f-cbf4-428c-bf25-7bb472d0c289","transcript_path":"/home/agent1/.claude/projects/-srv-office-projects-throwaway/64b7ee5f-cbf4-428c-bf25-7bb472d0c289.jsonl","cwd":"/srv/office/projects/throwaway","scratchpad_dir":"/tmp/claude-1007/-srv-office-projects-thr

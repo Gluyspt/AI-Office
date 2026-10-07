@@ -1,0 +1,18 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	143206
+# started	2026-10-07T12:30:22Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	sudo -n -u agent1
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet
+# rundir	/srv/office/spike003/run-143206
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T12:30:24Z	deliver-prompt	0	startup	ready	-	-	prompt reached
+2026-10-07T12:32:24Z	deliver-prompt	1	permission	no_dialog	-	-	no permission dialog appeared — check the allowlist and SPIKE_PERMISSION_PROMPT
+2026-10-07T12:34:24Z	deliver-prompt	2	permission	no_dialog	-	-	no permission dialog appeared — check the allowlist and SPIKE_PERMISSION_PROMPT
+2026-10-07T12:36:24Z	deliver-prompt	3	permission	no_dialog	-	-	no permission dialog appeared — check the allowlist and SPIKE_PERMISSION_PROMPT

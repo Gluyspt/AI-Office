@@ -1,0 +1,35 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	168758
+# started	2026-10-07T12:36:24Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	sudo -n -u agent1
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet
+# rundir	/srv/office/spike003/run-168758
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T12:36:25Z	interrupt	0	startup	ready	-	-	prompt reached
+2026-10-07T12:36:30Z	interrupt	1	escape	ok	158	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:36:35Z	interrupt	2	escape	ok	178	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:36:40Z	interrupt	3	escape	ok	-100	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:36:45Z	interrupt	4	escape	ok	179	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:36:50Z	interrupt	5	escape	ok	169	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:36:55Z	interrupt	6	escape	ok	163	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:00Z	interrupt	7	escape	ok	183	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:05Z	interrupt	8	escape	ok	207	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:11Z	interrupt	9	escape	ok	212	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:16Z	interrupt	10	escape	ok	206	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:21Z	interrupt	11	escape	ok	166	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:26Z	interrupt	12	escape	ok	164	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:31Z	interrupt	13	escape	ok	218	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:36Z	interrupt	14	escape	ok	211	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:42Z	interrupt	15	escape	ok	202	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:47Z	interrupt	16	escape	ok	180	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:52Z	interrupt	17	escape	ok	209	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:37:57Z	interrupt	18	escape	ok	207	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:38:02Z	interrupt	19	escape	ok	177	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:38:07Z	interrupt	20	escape	ok	170	ms	turn halted, session alive, pane shows an interrupted marker

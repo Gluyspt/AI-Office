@@ -128,11 +128,38 @@ root. Keeping them together let "no root" hold up a measurement that never neede
       `/tmp/tmux-1006`); pane reports `agent1`; `HOME=/home/agent1` matching passwd;
       `CLAUDE_CONFIG_DIR` unset per GLU-44; and the agent user's tmux cannot see the caller's
       sessions.
-- [ ] **(b2) The delivery trials through `sudo -n -u`.** `drive-session.sh all --trials 20`:
-      delivery reliability for idle / mid-turn / permission-prompt at 20 trials each, `Escape`
-      interrupt timing, the character round-trip matrix, and whether `kill-session` fires
-      SessionEnd — all still carrying a WSL label. Deliberately not run in the first pass: these
-      re-measure what WSL already gave provisionally, and they are the expensive part.
+- [x] **(b2) The delivery trials through `sudo -n -u` — RUN 2026-10-07.** Not via `all`, which
+      would have redone the character matrix and RSS; the individual subcommands, so nothing already
+      measured was paid for twice. Rows in `docs/spikes/002-vps-results/b2/`.
+
+      | trial | result |
+      | --- | --- |
+      | `deliver --state idle` | **20/20 ok**, p50 2 176 ms, p95 2 888 ms |
+      | `deliver --state midturn` | **20/20 delivered, never dropped** — but the queued-vs-interleaved label is noise, see below |
+      | `deliver --state prompt` | **20/20 `dialog_answered`** — the hazard confirmed on the target |
+      | `interrupt` | **20/20 ok**, p50 179 ms, p95 212 ms, session survives |
+      | `interrupt --with-queued` | **17 delivered, 2 discarded** — non-deterministic, see below |
+      | `session-end` | **5/5 fired** idle, **5/5 fired** mid-turn |
+
+      **Three of these are worth more than their pass marks:**
+
+      **The permission-prompt hazard is confirmed, 20/20, with proof of execution** — the approved
+      `touch` left its file on disk. It took two fixes to see at all: auto mode is now the default
+      and raises no dialog, and the harness's `echo` probe is auto-allowed even under `manual`.
+      Three earlier runs reported `no_dialog` and blamed the allowlist. A row saying "this state did
+      not occur" is not a row saying "this state is safe".
+
+      **The mid-turn ordering question is not measurable this way, and ticket 008 has been told so.**
+      `interleaved` vs `queued` is decided by comparing two pane-scraped timestamps separated by
+      ≤ 14 ms in 14 of 20 trials, against a 100 ms poll interval. WSL's "queued 8/8" and this run's
+      "interleaved 20/20" are the same noise read twice, not a host difference.
+
+      **A message queued before `Escape` usually still runs — 17 of 19 — and sometimes does not.**
+      Same host, same command, two behaviours. Ticket 027 cannot build on either branch; recorded
+      there.
+
+      Still carrying a WSL label and not re-run: nothing. The character matrix and RSS were measured
+      earlier the same day under (a1)/(a2a).
 - [x] `deploy/host/provision-host.sh` runs clean as root on the target host, and
       `visudo -c -f deploy/host/sudoers.d/office` passes there. **Done 2026-10-07 on `rtdvps`.**
       Part of (b); listed separately because it is the install, not a measurement.

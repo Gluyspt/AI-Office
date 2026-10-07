@@ -244,13 +244,45 @@ provisioned config naming `"default"` names something the CLI rejects.
 session for the same reason `bypassPermissions` already was: the `PermissionRequest` hook the design
 relies on to mark an agent blocked in the UI never fires if nothing ever asks.
 
-### §3 `Escape` interrupt — **MEASURED (VPS), 20/20 ok**
+### §1 at a permission prompt, full run — **20/20 `dialog_answered`**
 
-Through `sudo -n -u agent1`, 20 trials, no failures. The session survives, as on WSL.
+The 3/3 above was a 3-trial probe. The full 20 came back **20/20 `dialog_answered`** once the mode
+and the probe command were both right. There is no ambiguity left in this finding: on the target,
+through `sudo -n -u`, a message delivered while a dialog is up approves the pending call **every
+time**.
 
-Note the timing caveat from [the clock that steps backwards](#a-clock-that-steps-backwards): the
-~124 ms figure WSL recorded for this is within the range this host's clock can move on its own, so
-treat any single interrupt latency here as indicative.
+### §3 `Escape` interrupt — **MEASURED (VPS), 20/20 ok. p50 179 ms, p95 212 ms**
+
+Through `sudo -n -u agent1`, 20 trials, no failures, session survives. WSL recorded ~124 ms; the
+target is slower but the same order.
+
+**One of the twenty reported `-100 ms`** — the second impossible duration of the day, after the
+`-494 ms` in the size probe. Two independent sightings make
+[the backwards clock](#a-clock-that-steps-backwards) a property of this host rather than a one-off,
+and it is exactly why the figures above are quoted as percentiles over twenty trials rather than as
+a number.
+
+### §5 `kill-session` fires SessionEnd — **MEASURED (VPS), 5/5 idle and 5/5 mid-turn**
+
+Both ways, on the real host, through sudo. Matches WSL's 8/8. Killing a session mid-turn still
+fires the hook, which is what ticket 028's emergency stop depends on.
+
+### A queued message survives `Escape` — **inconsistently, which is the finding**
+
+`interrupt --with-queued` exists to answer ticket 027's open question: what happens to a message
+queued but not yet delivered when the agent is interrupted. The answer on the target is **not a
+clean one**.
+
+Of 19 completed trials: **17 `delivered`** — *"the message queued before Escape still ran"* — and
+**2 `discarded`**. Same host, same command, same session shape, two different behaviours.
+
+So the queued message usually survives the interrupt and executes afterwards, and sometimes does
+not. **Ticket 027 cannot be built on either branch.** An emergency stop that leaves a 90% chance of
+the queued instruction running anyway is not a stop, and a UI that says "stopped" while the next
+message executes is worse than one that admits it. This is a second instance of the same shape as
+§2: the orchestrator has to own the queue, because then interrupting means *not sending* rather than
+hoping tmux forgets.
+
 
 ### §4 character matrix — **MEASURED (VPS), 35/36, identical to WSL**
 

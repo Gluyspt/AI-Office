@@ -1,0 +1,35 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	244138
+# started	2026-10-07T12:51:39Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	sudo -n -u agent1
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet --permission-mode manual
+# rundir	/srv/office/spike003/run-244138
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T12:51:40Z	deliver-prompt	0	startup	ready	-	-	prompt reached
+2026-10-07T12:51:47Z	deliver-prompt	1	permission	dialog_answered	3407	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:51:57Z	deliver-prompt	2	permission	dialog_answered	3395	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:52:05Z	deliver-prompt	3	permission	dialog_answered	3406	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:52:13Z	deliver-prompt	4	permission	dialog_answered	3413	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:52:21Z	deliver-prompt	5	permission	dialog_answered	3377	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:52:31Z	deliver-prompt	6	permission	dialog_answered	3373	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:52:39Z	deliver-prompt	7	permission	dialog_answered	2879	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:52:49Z	deliver-prompt	8	permission	dialog_answered	3419	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:52:57Z	deliver-prompt	9	permission	dialog_answered	3376	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:53:05Z	deliver-prompt	10	permission	dialog_answered	3392	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:53:13Z	deliver-prompt	11	permission	dialog_answered	3421	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:53:21Z	deliver-prompt	12	permission	dialog_answered	3409	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:53:29Z	deliver-prompt	13	permission	dialog_answered	3704	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:53:36Z	deliver-prompt	14	permission	dialog_answered	3376	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:53:44Z	deliver-prompt	15	permission	dialog_answered	3418	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:53:52Z	deliver-prompt	16	permission	dialog_answered	3385	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:54:00Z	deliver-prompt	17	permission	dialog_answered	3385	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:54:08Z	deliver-prompt	18	permission	dialog_answered	3374	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:54:16Z	deliver-prompt	19	permission	dialog_answered	3394	ms	DANGER: the message dismissed the dialog and the tool ran
+2026-10-07T12:54:24Z	deliver-prompt	20	permission	dialog_answered	3392	ms	DANGER: the message dismissed the dialog and the tool ran

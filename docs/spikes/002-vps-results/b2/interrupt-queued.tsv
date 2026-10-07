@@ -1,0 +1,55 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	171494
+# started	2026-10-07T12:38:08Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	sudo -n -u agent1
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet
+# rundir	/srv/office/spike003/run-171494
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T12:38:09Z	interrupt	0	startup	ready	-	-	prompt reached
+2026-10-07T12:38:19Z	interrupt	1	escape	ok	4644	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:38:20Z	interrupt	1	queued-after-escape	delivered	272	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:38:28Z	interrupt	2	escape	ok	2584	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:38:29Z	interrupt	2	queued-after-escape	delivered	789	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:38:37Z	interrupt	3	escape	ok	2612	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:38:37Z	interrupt	3	queued-after-escape	delivered	24	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:38:47Z	interrupt	4	escape	ok	3454	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:38:47Z	interrupt	4	queued-after-escape	delivered	23	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:38:56Z	interrupt	5	escape	ok	1786	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:38:56Z	interrupt	5	queued-after-escape	delivered	24	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:39:05Z	interrupt	6	escape	ok	2464	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:39:05Z	interrupt	6	queued-after-escape	delivered	24	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:39:14Z	interrupt	7	escape	ok	3360	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:39:14Z	interrupt	7	queued-after-escape	delivered	28	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:39:20Z	interrupt	8	escape	ok	289	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:40:20Z	interrupt	8	queued-after-escape	discarded	59308	ms	the queued message did not produce a reply after the interrupt
+2026-10-07T12:40:28Z	interrupt	9	escape	ok	2467	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:40:28Z	interrupt	9	queued-after-escape	delivered	23	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:40:35Z	interrupt	10	escape	ok	305	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:41:35Z	interrupt	10	queued-after-escape	discarded	60337	ms	the queued message did not produce a reply after the interrupt
+2026-10-07T12:41:43Z	interrupt	11	escape	ok	2448	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:41:43Z	interrupt	11	queued-after-escape	delivered	24	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:41:54Z	interrupt	12	escape	ok	4165	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:41:54Z	interrupt	12	queued-after-escape	delivered	-692	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:42:00Z	interrupt	13	escape	ok	179	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:43:00Z	interrupt	13	queued-after-escape	discarded	60000	ms	the queued message did not produce a reply after the interrupt
+2026-10-07T12:43:09Z	interrupt	14	escape	ok	3104	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:43:09Z	interrupt	14	queued-after-escape	delivered	49	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:43:18Z	interrupt	15	escape	ok	2390	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:43:18Z	interrupt	15	queued-after-escape	delivered	24	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:43:27Z	interrupt	16	escape	ok	2493	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:43:27Z	interrupt	16	queued-after-escape	delivered	28	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:43:34Z	interrupt	17	escape	ok	492	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:44:34Z	interrupt	17	queued-after-escape	discarded	59723	ms	the queued message did not produce a reply after the interrupt
+2026-10-07T12:44:42Z	interrupt	18	escape	ok	2411	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:44:42Z	interrupt	18	queued-after-escape	delivered	51	ms	the message queued before Escape still ran — 027 must decide if that is wanted
+2026-10-07T12:44:49Z	interrupt	19	escape	ok	293	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:45:49Z	interrupt	19	queued-after-escape	discarded	59701	ms	the queued message did not produce a reply after the interrupt
+2026-10-07T12:45:57Z	interrupt	20	escape	ok	2403	ms	turn halted, session alive, pane shows an interrupted marker
+2026-10-07T12:45:57Z	interrupt	20	queued-after-escape	delivered	24	ms	the message queued before Escape still ran — 027 must decide if that is wanted

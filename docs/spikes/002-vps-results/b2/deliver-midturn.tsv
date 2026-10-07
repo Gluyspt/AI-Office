@@ -1,0 +1,35 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	132584
+# started	2026-10-07T12:27:31Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	sudo -n -u agent1
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet
+# rundir	/srv/office/spike003/run-132584
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T12:27:32Z	deliver-midturn	0	startup	ready	-	-	prompt reached
+2026-10-07T12:27:45Z	deliver-midturn	1	midturn	interleaved	8603	ms	token appeared while the first turn was still running; turn end at 8608ms
+2026-10-07T12:27:54Z	deliver-midturn	2	midturn	interleaved	4626	ms	token appeared while the first turn was still running; turn end at 4687ms
+2026-10-07T12:28:02Z	deliver-midturn	3	midturn	interleaved	4119	ms	token appeared while the first turn was still running; turn end at 4129ms
+2026-10-07T12:28:10Z	deliver-midturn	4	midturn	interleaved	3438	ms	token appeared while the first turn was still running; turn end at 3448ms
+2026-10-07T12:28:18Z	deliver-midturn	5	midturn	interleaved	3146	ms	token appeared while the first turn was still running; turn end at 3152ms
+2026-10-07T12:28:26Z	deliver-midturn	6	midturn	interleaved	3105	ms	token appeared while the first turn was still running; turn end at 3246ms
+2026-10-07T12:28:35Z	deliver-midturn	7	midturn	interleaved	4327	ms	token appeared while the first turn was still running; turn end at 4337ms
+2026-10-07T12:28:44Z	deliver-midturn	8	midturn	interleaved	4850	ms	token appeared while the first turn was still running; turn end at 4855ms
+2026-10-07T12:28:52Z	deliver-midturn	9	midturn	interleaved	3315	ms	token appeared while the first turn was still running; turn end at 3321ms
+2026-10-07T12:29:00Z	deliver-midturn	10	midturn	interleaved	3261	ms	token appeared while the first turn was still running; turn end at 3269ms
+2026-10-07T12:29:08Z	deliver-midturn	11	midturn	interleaved	2549	ms	token appeared while the first turn was still running; turn end at 2555ms
+2026-10-07T12:29:15Z	deliver-midturn	12	midturn	interleaved	3219	ms	token appeared while the first turn was still running; turn end at 3225ms
+2026-10-07T12:29:23Z	deliver-midturn	13	midturn	interleaved	3177	ms	token appeared while the first turn was still running; turn end at 3191ms
+2026-10-07T12:29:31Z	deliver-midturn	14	midturn	interleaved	3608	ms	token appeared while the first turn was still running; turn end at 3619ms
+2026-10-07T12:29:40Z	deliver-midturn	15	midturn	interleaved	3937	ms	token appeared while the first turn was still running; turn end at 3942ms
+2026-10-07T12:29:47Z	deliver-midturn	16	midturn	interleaved	2572	ms	token appeared while the first turn was still running; turn end at 2577ms
+2026-10-07T12:29:56Z	deliver-midturn	17	midturn	interleaved	3835	ms	token appeared while the first turn was still running; turn end at 3840ms
+2026-10-07T12:30:05Z	deliver-midturn	18	midturn	interleaved	4568	ms	token appeared while the first turn was still running; turn end at 4719ms
+2026-10-07T12:30:13Z	deliver-midturn	19	midturn	interleaved	2862	ms	token appeared while the first turn was still running; turn end at 2867ms
+2026-10-07T12:30:22Z	deliver-midturn	20	midturn	interleaved	4076	ms	token appeared while the first turn was still running; turn end at 4204ms

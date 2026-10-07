@@ -1,0 +1,35 @@
+# spike 003 — tmux control of a live Claude Code TUI
+# run_id	126597
+# started	2026-10-07T12:26:18Z
+# host	Linux 7.0.0-34-generic x86_64
+# os	Ubuntu 26.04.1 LTS
+# tmux	tmux 3.6
+# claude	2.1.283 (Claude Code)
+# sudo_prefix	sudo -n -u agent1
+# target_user	agent1
+# project_dir	/srv/office/projects/throwaway
+# config_dir	(default)
+# claude_args	--model sonnet
+# rundir	/srv/office/spike003/run-126597
+ts	test	trial	variant	outcome	value	unit	detail
+2026-10-07T12:26:34Z	deliver-idle	0	startup	ready	-	-	prompt reached
+2026-10-07T12:26:40Z	deliver-idle	1	idle	ok	5136	ms	reply carried ACK126597i1
+2026-10-07T12:26:43Z	deliver-idle	2	idle	ok	2762	ms	reply carried ACK126597i2
+2026-10-07T12:26:45Z	deliver-idle	3	idle	ok	2397	ms	reply carried ACK126597i3
+2026-10-07T12:26:48Z	deliver-idle	4	idle	ok	2203	ms	reply carried ACK126597i4
+2026-10-07T12:26:50Z	deliver-idle	5	idle	ok	2176	ms	reply carried ACK126597i5
+2026-10-07T12:26:53Z	deliver-idle	6	idle	ok	2168	ms	reply carried ACK126597i6
+2026-10-07T12:26:56Z	deliver-idle	7	idle	ok	2263	ms	reply carried ACK126597i7
+2026-10-07T12:26:59Z	deliver-idle	8	idle	ok	2711	ms	reply carried ACK126597i8
+2026-10-07T12:27:01Z	deliver-idle	9	idle	ok	2218	ms	reply carried ACK126597i9
+2026-10-07T12:27:04Z	deliver-idle	10	idle	ok	2449	ms	reply carried ACK126597i10
+2026-10-07T12:27:07Z	deliver-idle	11	idle	ok	2595	ms	reply carried ACK126597i11
+2026-10-07T12:27:10Z	deliver-idle	12	idle	ok	1449	ms	reply carried ACK126597i12
+2026-10-07T12:27:12Z	deliver-idle	13	idle	ok	2168	ms	reply carried ACK126597i13
+2026-10-07T12:27:15Z	deliver-idle	14	idle	ok	2162	ms	reply carried ACK126597i14
+2026-10-07T12:27:18Z	deliver-idle	15	idle	ok	2888	ms	reply carried ACK126597i15
+2026-10-07T12:27:20Z	deliver-idle	16	idle	ok	2166	ms	reply carried ACK126597i16
+2026-10-07T12:27:23Z	deliver-idle	17	idle	ok	1646	ms	reply carried ACK126597i17
+2026-10-07T12:27:25Z	deliver-idle	18	idle	ok	2141	ms	reply carried ACK126597i18
+2026-10-07T12:27:28Z	deliver-idle	19	idle	ok	1664	ms	reply carried ACK126597i19
+2026-10-07T12:27:30Z	deliver-idle	20	idle	ok	2063	ms	reply carried ACK126597i20

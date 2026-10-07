@@ -49,6 +49,23 @@ None.
 ## Open questions
 
 - [ ] Live model switching is step 11. The design puts a clickable model chip in the panel, so this ticket shows the chip and disables the action. Confirm that is preferable to hiding the chip until step 11.
+- [ ] **A message queued before an interrupt usually still runs, and sometimes does not — measured
+      2026-10-07 on the VPS, 17 `delivered` to 2 `discarded` over 19 trials.** Same host, same
+      command, same session shape, two behaviours. This was the open question
+      `interrupt --with-queued` existed to answer, and the answer is that **there is no behaviour to
+      rely on.**
+
+      It matters for this ticket specifically, because Interrupt here is deliberately *"a single
+      click with no confirmation… meant to be used reflexively"*. An interrupt that leaves roughly a
+      90% chance of the queued instruction executing anyway is not an interrupt, and a button that
+      reports "stopped" while the next message runs is worse than one that admits what it does.
+
+      **The fix is not in this ticket's UI, it is upstream:** ticket 008 now owns the mid-turn queue
+      (settled the same day, for the related reason that tmux's queueing behaviour is unobservable),
+      so interrupting can mean *not sending* rather than hoping tmux forgets. This ticket should
+      drive 008's queue, and its Interrupt must discard the pending message explicitly rather than
+      assume `Escape` did. Until it does, the control cannot honestly claim more than "the current
+      turn was interrupted".
 - [ ] The design's "anyone can instruct any agent" office setting does not exist until step 9, and there is one user in step 3. Kill and interrupt are therefore unrestricted. Recorded here so it is not forgotten when multiple accounts arrive — an unrestricted Kill across owners is a bigger deal than an unrestricted message.
 - [ ] Nothing specifies whether the blocked banner should also fire a notification. Discord is step 6; the event is emitted and nothing consumes it yet.
 - [ ] Whether a blocked agent should count against the project's session cap is unspecified. It currently does, since it holds a process.
