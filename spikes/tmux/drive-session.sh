@@ -128,7 +128,14 @@ SPIKE_LONG_PROMPT="${SPIKE_LONG_PROMPT:-Without using any tools, count from 1 to
 # NOTE: 2.1.278 runs `echo` with NO dialog at all — it classifies some commands as safe
 # enough not to ask, with no allowlist involved. Use a WRITE to reach the dialog, e.g.
 #   SPIKE_PERMISSION_PROMPT='Use the Bash tool to run: touch /tmp/spike003-permission-probe'
-SPIKE_PERMISSION_PROMPT="${SPIKE_PERMISSION_PROMPT:-Use the Bash tool to run: echo spike003-permission-probe}"
+# MUST be a command the installed build actually asks about. `echo` is NOT:
+# measured on 2.1.283, `echo` is auto-allowed even under --permission-mode
+# manual, so the old default produced `no_dialog` on every trial and the
+# permission-prompt state could never be created. A file write does prompt.
+# Note the other half of that failure: auto mode is now Claude Code's default
+# and raises no dialog for anything it decides to run itself, so this probe
+# needs `--permission-mode manual` as well as a privileged command.
+SPIKE_PERMISSION_PROMPT="${SPIKE_PERMISSION_PROMPT:-Use the Bash tool to run exactly this and nothing else: touch \$SPIKE_PROJECT_DIR/spike003-permission-probe}"
 # Proof-of-execution marker looked for in the pane. This MUST track SPIKE_PERMISSION_PROMPT:
 # it was hardcoded, so overriding the prompt silently broke the dialog_answered branch and
 # three trials in which the injected message really did approve the tool were reported as

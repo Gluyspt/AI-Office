@@ -194,28 +194,55 @@ tmux failed — because nobody can observe what tmux does here, and an unobserva
 foundation. Settling it would need hook events with real timestamps (ticket 010) rather than pane
 polling.
 
-### §1 delivery at a permission prompt — **NOT MEASURABLE in auto mode, which is now the default**
+### §1 delivery at a permission prompt — **CONFIRMED ON THE TARGET, and it took two fixes to see at all**
 
-`deliver --state prompt` returned `no_dialog` on every trial: *"no permission dialog appeared — check
-the allowlist and SPIKE_PERMISSION_PROMPT"*. The cause is not the allowlist. The agent session
-starts in **auto mode**, which the installed build announces as *"Auto mode is now Claude Code's
-default permission mode… Claude checks each tool call for risky actions and prompt injection before
-executing, runs the ones it assesses as lower-risk, and blocks the rest."* In that mode Claude
-resolves permissions itself and **no dialog is raised**, so the state this criterion measures cannot
-exist and the trial was measuring nothing.
+**The worst finding in this document reproduces on the VPS, through `sudo -n -u`, with proof of
+execution.** `deliver --state prompt` returns `dialog_answered` — *"DANGER: the message dismissed
+the dialog and the tool ran"* — and the file the approved command creates **is on disk afterwards**.
+A chat message delivered while a permission dialog is up **approves the pending tool call.** WSL saw
+it 3/3; the target now agrees.
 
-This is the same thing spike 003 recorded when it found that a bare `claude` starts in auto mode and
-some commands raise no dialog at all — and it is exactly why tickets 007/009 decided the permission
-mode must be **set explicitly at launch rather than inherited**. The measurement needs a mode that
-actually prompts.
+Ticket 008's gate on dialog state is therefore not a precaution, it is a requirement, and the
+adapter's own pane-scraping check says so about itself: *"that is best-effort pane scraping, and
+pane strings moved twice during the spike."*
 
-**Why this matters more than a missing row.** The finding this state exists to re-confirm is spike
-§1's worst one: *a chat message delivered while a permission dialog is up APPROVES the pending tool
-call*, 3/3, verified in the transcript and by the file the approved command created. Ticket 008 must
-gate delivery on dialog state because of it. That hazard does not go away in auto mode — it moves,
-because auto mode decides for itself and **blocks the rest**, which means dialogs still appear for
-whatever it declines to auto-run. So the criterion still needs an answer; it just cannot be obtained
-from a default-mode session.
+**Two independent things each made this unmeasurable, and either alone produces a silent `no_dialog`
+on every trial.** Three full runs reported nothing before both were fixed:
+
+1. **Auto mode is now Claude Code's default**, announced by the build itself: *"Claude checks each
+   tool call for risky actions and prompt injection before executing, runs the ones it assesses as
+   lower-risk, and blocks the rest."* No dialog is raised for anything it decides to run, so the
+   state cannot exist. Needs `--permission-mode manual`.
+2. **The probe command has to be one the build actually asks about, and `echo` is not** — it is
+   auto-allowed even under `manual`. The harness's default was
+   `Use the Bash tool to run: echo spike003-permission-probe`, which can never prompt. A file write
+   does. The default is now a `touch` into the project directory, and the marker it leaves is the
+   proof of execution quoted above.
+
+**`--permission-mode default` does not exist on this build** and was the second thing tried. See
+[the permission-mode vocabulary](#the-permission-mode-vocabulary-changed) below.
+
+**The honest reading of three `no_dialog` runs:** the harness reported exactly what it saw and
+pointed at the allowlist, which was the wrong suspect both times. A row that says "this state did
+not occur" is not the same as "this state is safe", and it took deliberately disbelieving the row to
+find two separate causes behind it.
+
+### The permission-mode vocabulary changed
+
+`claude --help` on the installed build (**2.1.283**) offers:
+
+> `--permission-mode <mode>` — choices: `acceptEdits`, `auto`, `bypassPermissions`, `manual`,
+> `dontAsk`, `plan`
+
+**`default` is not among them.** Ticket 009 predicted precisely this — it carries an open question
+requiring the flag be *"confirmed against the installed build before shipping, not assumed"*, because
+spike 002 saw `permission_mode` report `default` in hook payloads while the TUI showed "manual
+mode". So the value that appears in hook payloads is **not a value anyone can pass**, and a
+provisioned config naming `"default"` names something the CLI rejects.
+
+`manual` is the mode that prompts. Which makes `auto` and `dontAsk` disqualifying for an agent
+session for the same reason `bypassPermissions` already was: the `PermissionRequest` hook the design
+relies on to mark an agent blocked in the UI never fires if nothing ever asks.
 
 ### §3 `Escape` interrupt — **MEASURED (VPS), 20/20 ok**
 
