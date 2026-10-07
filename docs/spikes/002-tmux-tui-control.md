@@ -116,14 +116,35 @@ without a Claude session cannot supply:
 That split is now two separate acceptance criteria on ticket 007. As one criterion, "no root" held
 up a figure that never needed root — and that figure is the one on the critical path.
 
-**A probe note, because this is the second time.** The first survey of the privileged-group refusal
-ran as an `ssh` one-liner and reported `gluy -> allowed`, missing `docker`. The guard was correct;
-the probe was not. `gluy`'s login shell on this host is **zsh**, which does not word-split an
-unquoted `$VAR`, so `for g in $PRIVILEGED_GROUPS` iterated once over the whole six-word string and
-grepped for a group of that name. `provision-host.sh` is `#!/bin/sh` → dash, where it splits.
-Re-run under `/bin/sh` the refusals are correct. This document already carries one instance of the
-same shape — a probe that tested a *wider* permission than the one granted, reporting a correct
-sudoers file as broken. **Run a probe in the shell the thing it probes runs in.**
+**A probe note — three instances now, and they are one lesson.** All three reported a *correct*
+configuration as broken, which is the expensive direction: it sends someone to fix what is not
+wrong.
+
+1. **Earlier, in this document:** `drive-session.sh` probed sudo with `... true`, a **wider**
+   permission than the one granted — which a correctly scoped sudoers file must deny.
+2. **2026-10-07, the privileged-group refusal.** An `ssh` one-liner reported `gluy -> allowed`,
+   missing `docker`. The guard was right; the probe ran under **zsh**, which does not word-split an
+   unquoted `$VAR`, so `for g in $PRIVILEGED_GROUPS` iterated once over the whole six-word string
+   and grepped for a group of that name. `provision-host.sh` is `#!/bin/sh` → dash, where it
+   splits. **Run a probe in the shell the thing it probes runs in.**
+3. **2026-10-07, the login precondition — the sharpest of the three, because it was written as a
+   precondition *for* the isolation it then failed to respect.** `run-007b.sh` ran
+   `[ -e ~agent1/.claude.json ]` as `office` to check the agent had logged in. `office` cannot
+   traverse `~agent1` (`drwxr-x--- agent1 agent1`), and **`test -e` cannot distinguish
+   permission-denied from absent**, so the check reported "no Claude login" on a host where the
+   login and the folder trust had both just been done. It would have failed on *every* correctly
+   provisioned host, because `office` not reading `~agent1` is the entire point of giving each
+   agent its own account.
+
+   The fix is not a better probe — it is accepting that the question cannot be asked from there.
+   The script now says the login is unverifiable from `office` by design, prints the two root-side
+   commands that do answer it, and leans on the harness reporting `auth_failed` per row rather than
+   inventing a measurement.
+
+**The general rule this document keeps relearning: a probe that needs access the boundary is
+supposed to refuse is not a test of the boundary, it is a second implementation of it — and the
+failure is silent and backwards.** Check from a vantage point that legitimately has the access, or
+state that you cannot check.
 
 ## Running the harness on the VPS
 
