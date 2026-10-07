@@ -162,7 +162,53 @@ the figure ticket 018's floor reads. At 0.34 GB peak per bare agent that is **�
 every term pushes it down from there: the orchestrator and Postgres are not yet on the box, a graph
 server per project arrives at step 5, and loaded agents carry four things these did not.
 
-### Payload-size limit — **STILL DEFERRED, and now for a structural reason**
+### §4 character matrix — **MEASURED (VPS), 35/36, identical to WSL**
+
+Run as `agent1` with no sudo (see the structural reason below), transcript-verified in both
+directions: the user message carried the payload byte for byte *and* the reply repeated it byte for
+byte. 9 payload classes × 4 mechanisms, 1.3–2.3 s per trial.
+
+**The one failure is the same one WSL found: `newline` via plain `paste-buffer`.** `not_received`
+after 45 s — "NO user message carried the payload byte for byte — the send mechanism mangled or
+split it". WSL recorded the same payload class failing the same way on the same mechanism, where it
+*split* the message into two turns. **Two independent hosts, two kernels, one with sudo in the path
+and one without, both say plain `paste-buffer` is unusable for multi-line text.** That is no longer
+a provisional finding.
+
+`send-keys -l` — the mechanism ticket 007's adapter actually uses — passed **all nine classes,
+including `newline`**. So did `send-keys` and `paste-buffer -p`. The adapter's choice is confirmed.
+
+### Payload-size limit — **STILL NOT MEASURED, and the probe is aimed at the wrong mechanism**
+
+Before the structural problem below, there is a simpler one: **the size probe measures a mechanism
+the adapter does not use.**
+
+Reading the probe (`spikes/tmux/drive-session.sh`, the buffer-limit loop): for each of 1000, 4000,
+16000 and 65536 characters it builds a marker-prefixed payload, sends it with
+`load-buffer` + `paste-buffer -d`, sleeps 1.5 s, and reads the **composer**. It never submits and
+never looks at the transcript. All four sizes came back `collapsed_to_placeholder`
+(`[Pasted text #1..#4]`), with the detail string *"verify with chars --mode echo"* — printed by a
+run that **was** in echo mode, because the size loop behaves identically in both. Its own source
+comment concedes the point: "only echo mode can prove the whole payload survived." The harness
+instructs you to do the thing it does not do.
+
+And the mechanism it exercises is `load-buffer`/`paste-buffer` — **the one this same run just
+re-confirmed loses a newline-bearing payload entirely.** The adapter sends with `send-keys -l`.
+So even a clean result here would not answer the criterion it exists to answer.
+
+**What the run does establish:** tmux accepted every size up to 65 536 characters. `send_failed`
+never fired, so neither `load-buffer` nor `paste-buffer` refused any of those sizes — there is no
+tmux-level refusal below 64 KB on that path. Integrity at every size ≥ 1000 is **unverified**, and
+the composer cannot verify it, by construction.
+
+**So ticket 007's criterion is mis-specified, not merely unmet.** It reads "a message longer than
+the tmux **buffer** limit", which presumes the buffer path; the adapter's path is `send-keys -l`,
+whose size behaviour nothing has probed. Measuring the limit means probing `send-keys -l` with
+transcript verification at increasing sizes — a harness change, not another run.
+
+### Why this had to run as `agent1` — the structural reason
+
+
 
 `chars --mode echo` **cannot be run as `office`.** It establishes ground truth from Claude Code's
 own JSONL transcript — deliberately, because the pane renders markdown and made backticks look

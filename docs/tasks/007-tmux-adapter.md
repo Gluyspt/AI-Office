@@ -38,8 +38,8 @@ None.
 
 - [ ] `newSession` starts a detached tmux session as the target user with `CLAUDE_CONFIG_DIR` and the project working directory set, and `hasSession` reports it within 2 s.
 - [ ] Commands are built as **argument arrays**, never by string interpolation into a shell line. A test asserts that a message containing `; rm -rf ~` reaches the agent as literal text and executes nothing.
-- [ ] Every character class from ticket 003's findings (double quote, single quote, backtick, dollar, semicolon, newline, non-ASCII) round-trips into the agent's prompt intact, using the mechanism that spike recorded.
-- [ ] A message longer than the tmux buffer limit is delivered whole or fails loudly — never truncated silently. State the measured limit in a code comment.
+- [x] Every character class from ticket 003's findings (double quote, single quote, backtick, dollar, semicolon, newline, non-ASCII) round-trips into the agent's prompt intact, using the mechanism that spike recorded. **Verified on the VPS 2026-10-07, transcript-checked in both directions: 35/36, with `send-keys -l` passing all nine classes.** See (a2a).
+- [ ] A message longer than the tmux buffer limit is delivered whole or fails loudly — never truncated silently. State the measured limit in a code comment. **Mis-specified: see (a2b).** "The tmux buffer limit" names a mechanism the adapter does not use; the limit that matters is `send-keys -l`'s, and it is unmeasured. Reword alongside the measurement.
 - [ ] `sendEscape` halts a mid-turn agent and leaves the session alive, verified by `hasSession` afterwards.
 - [ ] `killSession` on a non-existent session returns a typed "not found" result rather than throwing.
 - [ ] Session names are stable across restarts for the same inputs, and two projects with the same role and owner produce different names — asserted by a table-driven test.
@@ -62,17 +62,38 @@ root. Keeping them together let "no root" hold up a measurement that never neede
       contradicts 018's assumption, though the series had not plateaued when the turn ended, so it
       is a truncated lower bound and not a ceiling. Recorded as a **floor**, explicitly not the
       cap's input. Raw rows in `docs/spikes/002-vps-results/`.
-- [ ] **(a2) The payload-size limit** via `chars --mode echo` — the figure the code comment above
-      asks for, unscrapeable from the pane (≥ ~1000 chars renders as `[Pasted text #N]`).
-      **Attempted 2026-10-07 and structurally blocked as `office`, which is a finding, not a
-      failure.** `chars --mode echo` takes ground truth from Claude Code's JSONL transcript — on
-      purpose, since the pane renders markdown and once made backticks look mangled when they had
-      arrived byte for byte. That transcript is in the agent's home:
-      `~agent1/.claude/sessions` is mode **700** and `~agent1` is 750, so `office` is denied.
-      **Per-agent credential isolation is what makes the verification channel unreachable from the
-      orchestrator account.** It must run **as `agent1`, no sudo** — legitimate here and nowhere
-      else in this re-measurement, because the limit is a property of tmux's buffers and the TUI;
-      nothing about `sudo -n -u` moves where a paste collapses.
+- [x] **(a2a) The character matrix, transcript-verified — 35/36, identical to WSL.** Run as
+      `agent1` 2026-10-07 (it cannot run as `office`; see below). 9 classes × 4 mechanisms, verified
+      in both directions. **The one failure is the one WSL found: `newline` via plain
+      `paste-buffer`, `not_received`.** Two hosts, two kernels, one path with sudo and one without —
+      plain `paste-buffer` is now definitively ruled out for multi-line text, not provisionally.
+      **`send-keys -l` passed all nine classes including `newline`**, so the adapter's mechanism is
+      confirmed. This closes the "every character class round-trips, using the mechanism that spike
+      recorded" criterion above.
+- [ ] **(a2b) The payload-size limit — NOT measured, and this criterion is mis-specified.** The
+      criterion above says "longer than the tmux **buffer** limit", which presumes `load-buffer`/
+      `paste-buffer`. **The adapter sends with `send-keys -l`, and nothing has probed that
+      mechanism's size behaviour.** The harness's size loop exercises the buffer path — the very
+      one this run re-confirmed loses newlines — so even a clean result there would not answer it.
+      It also never submits and never reads the transcript: it reads the composer, which showed
+      `collapsed_to_placeholder` at all four sizes with the detail *"verify with chars --mode
+      echo"*, printed by a run that was in echo mode. Its own source comment concedes that only
+      echo mode can prove the payload survived.
+      **What is established:** tmux accepted every size up to 65 536 chars — `send_failed` never
+      fired — so there is no tmux-level refusal below 64 KB on the buffer path; integrity at any
+      size ≥ 1000 is unverified and the composer cannot verify it.
+      **To close this:** probe `send-keys -l` at increasing sizes with transcript verification.
+      That is a harness change, not another run. Until then the adapter's code comment should state
+      what is actually known rather than a limit nobody measured.
+- [ ] **Why (a2) cannot run as `office` — a finding, not a failure.** `chars --mode echo` takes
+      ground truth from Claude Code's JSONL transcript, on purpose: the pane renders markdown and
+      once made backticks look mangled when they had arrived byte for byte. That transcript is in
+      the agent's home — `~agent1/.claude/sessions` is mode **700**, `~agent1` is 750 — so `office`
+      is denied. **Per-agent credential isolation is exactly what makes the verification channel
+      unreachable from the orchestrator account.** Running it as `agent1` with no sudo is
+      legitimate here and nowhere else in this re-measurement: the size and escaping behaviour are
+      properties of tmux and the TUI, and `sudo -n -u` moves neither. Left unticked as a standing
+      note rather than a task.
 - [x] **(b1) `sudo -u` parity on a provisioned host — 7/7.** **Done 2026-10-07**, previously green
       only in a container. `nopasswd`; `tmux_path` 3.6; per-user sockets (`/tmp/tmux-1007` vs
       `/tmp/tmux-1006`); pane reports `agent1`; `HOME=/home/agent1` matching passwd;

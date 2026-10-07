@@ -1,15 +1,55 @@
 # spike 003 — tmux control of a live Claude Code TUI
-# run_id	81912
-# started	2026-10-07T11:15:24Z
+# run_id	82757
+# started	2026-10-07T11:24:31Z
 # host	Linux 7.0.0-34-generic x86_64
 # os	Ubuntu 26.04.1 LTS
 # tmux	tmux 3.6
 # claude	2.1.283 (Claude Code)
-# sudo_prefix	sudo -n -u agent1
+# sudo_prefix	(none)
 # target_user	agent1
 # project_dir	/srv/office/projects/throwaway
 # config_dir	(default)
 # claude_args	--model sonnet
-# rundir	/srv/office/spike003/run-81912
+# rundir	/home/agent1/spike003-tmp/run-82757
 ts	test	trial	variant	outcome	value	unit	detail
-2026-10-07T11:15:25Z	chars	0	startup	ready	-	-	prompt reached
+2026-10-07T11:24:32Z	chars	0	startup	ready	-	-	prompt reached
+2026-10-07T11:24:36Z	chars	1	dquote/keys	echoed_intact	2034	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:24:39Z	chars	2	dquote/literal	echoed_intact	1752	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:24:42Z	chars	3	dquote/buffer	echoed_intact	1343	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:24:45Z	chars	4	dquote/buffer-bracket	echoed_intact	1769	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:24:49Z	chars	5	squote/keys	echoed_intact	2346	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:24:52Z	chars	6	squote/literal	echoed_intact	1901	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:24:55Z	chars	7	squote/buffer	echoed_intact	1490	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:24:58Z	chars	8	squote/buffer-bracket	echoed_intact	1645	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:01Z	chars	9	backtick/keys	echoed_intact	1929	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:05Z	chars	10	backtick/literal	echoed_intact	1840	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:08Z	chars	11	backtick/buffer	echoed_intact	1829	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:11Z	chars	12	backtick/buffer-bracket	echoed_intact	1668	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:14Z	chars	13	dollar/keys	echoed_intact	1462	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:17Z	chars	14	dollar/literal	echoed_intact	1765	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:20Z	chars	15	dollar/buffer	echoed_intact	1366	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:23Z	chars	16	dollar/buffer-bracket	echoed_intact	753	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:27Z	chars	17	semicolon/keys	echoed_intact	2292	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:30Z	chars	18	semicolon/literal	echoed_intact	1626	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:33Z	chars	19	semicolon/buffer	echoed_intact	1515	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:36Z	chars	20	semicolon/buffer-bracket	echoed_intact	1499	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:39Z	chars	21	shellmeta/keys	echoed_intact	1474	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:42Z	chars	22	shellmeta/literal	echoed_intact	1616	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:45Z	chars	23	shellmeta/buffer	echoed_intact	1763	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:48Z	chars	24	shellmeta/buffer-bracket	echoed_intact	1458	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:52Z	chars	25	nonascii/keys	echoed_intact	1794	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:55Z	chars	26	nonascii/literal	echoed_intact	1467	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:25:58Z	chars	27	nonascii/buffer	echoed_intact	1510	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:26:01Z	chars	28	nonascii/buffer-bracket	echoed_intact	1642	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:26:04Z	chars	29	newline/keys	echoed_intact	804	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:26:07Z	chars	30	newline/literal	echoed_intact	784	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:26:54Z	chars	31	newline/buffer	not_received	45249	ms	transcript: NO user message carried the payload byte for byte — the send mechanism mangled or split it; snapshot: /home/agent1/spike003-tmp/run-82757/panes/chars-echo-newline-buffer.txt
+2026-10-07T11:26:57Z	chars	32	newline/buffer-bracket	echoed_intact	1599	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:27:00Z	chars	33	combined/keys	echoed_intact	2215	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:27:04Z	chars	34	combined/literal	echoed_intact	1888	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:27:07Z	chars	35	combined/buffer	echoed_intact	1464	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:27:10Z	chars	36	combined/buffer-bracket	echoed_intact	1645	ms	transcript: the agent received the payload byte for byte and echoed it back byte for byte
+2026-10-07T11:27:12Z	chars	0	size-1000/buffer	collapsed_to_placeholder	1000	chars	composer shows [[Pasted text #1]] — verify with chars --mode echo
+2026-10-07T11:27:14Z	chars	0	size-4000/buffer	collapsed_to_placeholder	4000	chars	composer shows [[Pasted text #2]] — verify with chars --mode echo
+2026-10-07T11:27:16Z	chars	0	size-16000/buffer	collapsed_to_placeholder	16000	chars	composer shows [[Pasted text #3]] — verify with chars --mode echo
+2026-10-07T11:27:19Z	chars	0	size-65536/buffer	collapsed_to_placeholder	65536	chars	composer shows [[Pasted text #4]] — verify with chars --mode echo
