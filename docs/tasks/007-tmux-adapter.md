@@ -36,8 +36,30 @@ None.
 
 ## Acceptance criteria
 
-- [ ] `newSession` starts a detached tmux session as the target user with `CLAUDE_CONFIG_DIR` and the project working directory set, and `hasSession` reports it within 2 s.
-- [ ] Commands are built as **argument arrays**, never by string interpolation into a shell line. A test asserts that a message containing `; rm -rf ~` reaches the agent as literal text and executes nothing.
+- [x] `newSession` starts a detached tmux session as the target user with the project working
+      directory and environment set — *"starts a detached session with the config dir, working
+      directory and argv command"*, and *"refuses a launch command tmux would hand to a shell"*.
+      Confirmed on the target: `new-session -e` survives `sudo -u` (§7, 7/7) and sessions started
+      this way took messages 20/20.
+
+      **Two clauses of the original wording are superseded rather than met, deliberately.**
+      `CLAUDE_CONFIG_DIR` is *not* set by default — one config directory per Linux user, GLU-44 —
+      and the adapter only accepts an override. And *"`hasSession` reports it within 2 s"* is the
+      wrong question: this ticket's own Decided section establishes that `hasSession` being true
+      proves the **session** started, not that the agent can receive anything, with three separate
+      conditions observed leaving it true while the composer never appeared. `newSession` waits for
+      a composer instead — *"does not treat has-session as readiness — it waits for a composer"*,
+      *"kills the session and reports not_ready when no composer ever appears"*, and
+      *"fails when the pane command exits immediately, rather than reporting a live desk"*. The 2 s
+      figure is not asserted anywhere and should not be: readiness on the target took seconds, not
+      milliseconds, and a tight bound on it would flake on a host whose clock steps backwards.
+- [x] Commands are built as **argument arrays**, never by string interpolation into a shell line. A
+      test asserts that a message containing `; rm -rf ~` reaches the agent as literal text and
+      executes nothing. `buildTmuxCommand` has *"never produces a single string — every element is
+      its own argv entry"*, and `shell-quote.test.ts` carries the payload
+      `"first; rm -rf ~; second"` under *"semicolon and a destructive-looking command"*, asserting
+      it appears as **exactly one** argv element. Confirmed end to end on the VPS: the semicolon
+      class round-tripped `echoed_intact` through `send-keys -l`.
 - [x] Every character class from ticket 003's findings (double quote, single quote, backtick, dollar, semicolon, newline, non-ASCII) round-trips into the agent's prompt intact, using the mechanism that spike recorded. **Verified on the VPS 2026-10-07, transcript-checked in both directions: 35/36, with `send-keys -l` passing all nine classes.** See (a2a).
 - [x] A message longer than the tmux buffer limit is delivered whole or fails loudly — never
       truncated silently. State the measured limit in a code comment. **Measured on the VPS
@@ -49,15 +71,34 @@ None.
       criterion in its acceptable form. For the code comment: **16 000 chars is the measured safe
       floor; refuse or chunk above a conservative bound.** The exact boundary between 16 000 and
       65 536 is unpinned and does not need pinning.
-- [ ] `sendEscape` halts a mid-turn agent and leaves the session alive, verified by `hasSession` afterwards.
-- [ ] `killSession` on a non-existent session returns a typed "not found" result rather than throwing.
-- [ ] Session names are stable across restarts for the same inputs, and two projects with the same role and owner produce different names — asserted by a table-driven test.
-- [ ] Every tmux invocation has a timeout; a hung `sudo` rejects rather than leaking a process. Verified with a stub binary that sleeps.
+- [x] `sendEscape` halts a mid-turn agent and leaves the session alive, verified by `hasSession`
+      afterwards. Unit: *"interrupts with a single Escape keystroke"*. **Measured on the VPS through
+      `sudo -n -u`: 20/20, session alive every time, p50 179 ms, p95 212 ms.**
+- [x] `killSession` on a non-existent session returns a typed "not found" result rather than
+      throwing. *"returns a typed not-found result instead of throwing"*, plus *"reports a sudo
+      refusal as a sudo problem, not a missing session"* — the two are distinguished, which is the
+      part that would have been easy to conflate.
+- [x] Session names are stable across restarts for the same inputs, and two projects with the same
+      role and owner produce different names — asserted by a table-driven test. `naming.test.ts`:
+      *"is stable across restarts — the same inputs give the same name every call"* and *"separates
+      the four fields pairwise — 16 distinct desks, 16 distinct names"*, plus *"keeps two hostile
+      projects apart even when both slugify to nothing"*.
+- [x] Every tmux invocation has a timeout; a hung `sudo` rejects rather than leaking a process.
+      Verified with a stub binary that sleeps: *"kills a hung command and resolves as timedOut
+      instead of leaking it"*, and separately *"reports a missing binary as spawn_failed rather than
+      hanging"*.
 - [x] `deploy/host/sudoers.d/office` passes `visudo -c -f`. Verified 2026-10-07 **on the target
       host** (`/tmp/office-sudoers: parsed OK`), on the regenerated `agent1/2/3` file — previously
       only ever checked inside the container image. Note this proves syntax, not that the grant
       works: that needs the accounts to exist, which is criterion (b).
-- [ ] The adapter never runs as root, and never passes a user-supplied value as the `sudo -u` target — the target comes from the session registry only. A test asserts the rejection of an unknown user.
+- [x] The adapter never runs as root, and never passes a user-supplied value as the `sudo -u`
+      target — the target comes from the session registry only. A test asserts the rejection of an
+      unknown user. *"refuses every operation when its own uid is 0, before spawning anything"*,
+      *"rejects &lt;user&gt; without spawning anything"* over a table of hostile values, and
+      *"accepts an allowlisted account and passes it verbatim as the -u argument"*. Also
+      *"runs normally on a platform with no uids at all"*, so the root check does not break the
+      Windows development host. The kernel-side half of this is now verified on the target too:
+      `office` cannot reach root or a shell through the grant.
 
 The VPS re-measurement was one criterion until 2026-10-07. It is **two**, because its halves have
 different blockers and bundling them meant neither could close: the figure on the critical path
@@ -101,14 +142,14 @@ root. Keeping them together let "no root" hold up a measurement that never neede
       that passed in 155 ms. The size loop omitted the `wait_idle` the matrix loop has, so a submit
       landed while the agent was busy and tmux queued it. Both pass after the fix. **A failure whose
       duration equals the timeout is a queueing artefact until proven otherwise.**
-- [ ] **The host's clock steps backwards, which every timing criterion inherits.** One row reported
+**NOTE — the host's clock steps backwards, and every timing criterion inherits it.** One row reported
       **`-494 ms`** — impossible by construction, since `t0` precedes the loop, so the wall clock
       moved back about half a second between two `date +%s%3N` calls. NTP on a freshly provisioned
       box is the obvious cause. This ticket and 008 both assert on timings (the 101 ms hook round
       trip, the ~124 ms `Escape`), so: **assert on percentiles over many trials, never a single
       reading, and treat a negative or impossibly-small duration as a clock event rather than a
       fast path.** Left open as a standing constraint on how timing criteria are written.
-- [ ] **Why (a2) cannot run as `office` — a finding, not a failure.** `chars --mode echo` takes
+**NOTE — why (a2) cannot run as `office`. A finding, not a failure.** `chars --mode echo` takes
       ground truth from Claude Code's JSONL transcript, on purpose: the pane renders markdown and
       once made backticks look mangled when they had arrived byte for byte. Two walls, stacked:
       **(i)** `transcript_file()` resolved the *caller's* `$HOME`, so under sudo it searched
@@ -300,9 +341,27 @@ fallback and is superseded wherever root exists. Remaining human step: one inter
       a fresh account trusts nothing, and §4 of the spike found Enter does not dismiss that dialog,
       so an unattended first run parks on it with tmux reporting a live session.
 - [ ] Granting `NOPASSWD: /usr/bin/tmux` in full lets `office` run `tmux new-session` with **any** command as those users. The design accepts this; note that a tighter rule would need a wrapper script. Not changing it here, but recording it as a deliberate choice rather than an oversight.
-- [ ] **Should the Claude Code CLI version be pinned on the VPS?** Source: `docs/spikes/002-tmux-tui-control.md`. The binary
+- [ ] **Should the Claude Code CLI version be pinned on the VPS? — STRONGER EVIDENCE 2026-10-07,
+      still open.** Two things moved under the build in a single day's measuring: **auto mode became
+      Claude Code's default permission mode**, which silently removed the permission dialog and made
+      one of this ticket's criteria unmeasurable until the mode was forced; and the
+      `--permission-mode` vocabulary no longer contains `default`, the value hook payloads still
+      report, so a provisioned config naming it would be rejected by the CLI. Neither change
+      announced itself to anything that scrapes or drives the pane. The installed build is
+      **2.1.283**; `unattended-upgrades` is running on the box. This is no longer a hypothetical
+      about a TUI string — it is two measured instances of the risk. Source below, plus
+      §§ permission-prompt and permission-mode vocabulary. The binary
       auto-updated 2.1.178 to 2.1.278 *during* the spike, and the new build added a blocking modal that
       held the prompt indefinitely. The TUI changed under a running experiment with nothing deployed.
       Anything that scrapes or drives the pane breaks silently when that happens. New question, raised
       by 003.
-- [ ] Whether the orchestrator or tmux owns the queue for mid-turn messages depends on ticket 003's finding. This ticket exposes both `sendKeys` and `sendLiteral` and leaves the queueing decision to ticket 008.
+- [x] ~~Whether the orchestrator or tmux owns the queue for mid-turn messages depends on ticket
+      003's finding.~~ **Answered 2026-10-07: the orchestrator owns it, and ticket 008 has been told
+      so.** Not because tmux failed — because the finding this was waiting on **cannot be obtained
+      by the method that was supposed to produce it.** `interleaved` vs `queued` is decided by
+      comparing two pane-scraped timestamps that were ≤ 14 ms apart in 14 of 20 trials, against a
+      100 ms poll interval. Delivery is solid (20/20, never dropped); ordering is unobservable. A
+      second result points the same way: a message queued before `Escape` still ran in 17 of 19
+      trials and was discarded in 2 — non-deterministic on one host. This ticket still exposes both
+      `sendKeys` and `sendLiteral`; 008 queues above them, which also makes interrupting mean *not
+      sending*.
