@@ -473,3 +473,52 @@ describe("orphaned replies", () => {
     expect(result).toBeNull();
   });
 });
+
+// --- The transcript FILE is never read ------------------------------------------
+
+describe("nothing in this feature reads a Claude transcript file", () => {
+  // The design is explicit: the transcript file is written asynchronously and
+  // may lag, so `last_assistant_message` from the Stop payload is the source.
+  // The temptation is real and sits right there — every Stop payload carries a
+  // `transcript_path`, and reading it would look like the richer option while
+  // producing a chat panel that is intermittently a turn behind for reasons
+  // nobody could reproduce.
+  //
+  // Asserted structurally because there is no behaviour to assert: the
+  // criterion is about what the code does NOT do, and the only way that stays
+  // true is a test that fails when someone adds the import.
+  it("imports no filesystem module, and never touches payload.transcript_path", async () => {
+    const { readdir, readFile } = await import("node:fs/promises");
+    const nodePath = await import("node:path");
+    const root = nodePath.join(
+      nodePath.dirname(new URL(import.meta.url).pathname.replace(/^\/(?=[A-Za-z]:)/, "")),
+    );
+
+    const sources: string[] = [];
+    const walk = async (dir: string): Promise<void> => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = nodePath.join(dir, entry.name);
+        if (entry.isDirectory()) await walk(full);
+        else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+          sources.push(full);
+        }
+      }
+    };
+    await walk(root);
+
+    // Sanity: the walk found the feature, so a passing assertion is not an
+    // empty loop. transcript.ts, conversations.ts, handlers/reply.ts and
+    // routes/chat.ts are the four this ticket ships.
+    expect(sources.length).toBeGreaterThanOrEqual(4);
+
+    for (const file of sources) {
+      const text = await readFile(file, "utf8");
+      const name = nodePath.basename(file);
+      expect(text, `${name} must not import a filesystem module`).not.toMatch(
+        /from "node:fs(\/promises)?"/,
+      );
+      expect(text, `${name} must not read the transcript file`).not.toMatch(/transcript_path/);
+      expect(text, `${name} must not read a .jsonl transcript`).not.toMatch(/\.jsonl/);
+    }
+  });
+});

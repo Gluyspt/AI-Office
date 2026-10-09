@@ -65,18 +65,18 @@ empty message" is also unverifiable until then — and it is not known whether a
 
 ## Acceptance criteria
 
-- [ ] A conversation resolves by task id where the session has a task, and by role slot (project, department, role) where it does not — asserted for a Management lead, a dev lead, and a task agent.
-- [ ] A session replacing another on the same task or role slot appends a **new segment to the existing conversation**, never a new conversation. Asserted across a pause/resume cycle.
-- [ ] Each segment records why the previous one ended — paused, model switch, crash, completed — and whether context was restored from a handoff.
-- [ ] A Stop event for a known session appends exactly one inbound message carrying `last_assistant_message` verbatim, attributed to the right conversation and segment.
-- [ ] A Stop event that cannot be correlated to a session row is stored as orphaned with its payload intact, and logged — never dropped, never crashed on.
-- [ ] Outbound messages are recorded **before** delivery, with the human author attached, so a message that fails to deliver is still visible in the transcript with a failed marker.
-- [ ] Ordering is stable under concurrency: 50 interleaved inbound and outbound writes read back in send order, asserted by test.
-- [ ] `GET /conversations/:id/messages?before=` pages backwards across segment boundaries without gaps or duplicates.
-- [ ] Every appended message publishes on the WebSocket bus, and a client subscribed to that session receives it — the end-to-end assertion that the chat bridge works.
-- [ ] Nothing in this ticket reads a Claude transcript file.
-- [ ] A turn that ends with no assistant text (tool call only, or an interrupted turn) does not append an empty message.
-- [ ] Two sessions belonging to different users never cross-contaminate transcripts, asserted with concurrent traffic from both.
+- [x] A conversation resolves by task id where the session has a task, and by role slot (project, department, role) where it does not — asserted for a Management lead, a dev lead, and a task agent.
+- [x] A session replacing another on the same task or role slot appends a **new segment to the existing conversation**, never a new conversation. Asserted across a pause/resume cycle.
+- [x] Each segment records why the previous one ended — paused, model switch, crash, completed — and whether context was restored from a handoff.
+- [x] A Stop event for a known session appends exactly one inbound message carrying `last_assistant_message` verbatim, attributed to the right conversation and segment.
+- [x] A Stop event that cannot be correlated to a session row is stored as orphaned with its payload intact, and logged — never dropped, never crashed on.
+- [x] Outbound messages are recorded **before** delivery, with the human author attached, so a message that fails to deliver is still visible in the transcript with a failed marker.
+- [x] Ordering is stable under concurrency: 50 interleaved inbound and outbound writes read back in send order, asserted by test.
+- [x] `GET /conversations/:id/messages?before=` pages backwards across segment boundaries without gaps or duplicates.
+- [x] Every appended message publishes on the WebSocket bus, and a client subscribed to that session receives it — the end-to-end assertion that the chat bridge works.
+- [x] Nothing in this ticket reads a Claude transcript file.
+- [x] A turn that ends with no assistant text (tool call only, or an interrupted turn) does not append an empty message.
+- [x] Two sessions belonging to different users never cross-contaminate transcripts, asserted with concurrent traffic from both.
 
 ## Open questions
 
@@ -104,3 +104,77 @@ so a `.ts` extension there is illegal (TS5097) where `@office/server` allows it 
 spelling — with a comment saying why it differs from the server's style. Not a deviation
 from a convention; there was no convention, because every other shared module only ever
 used `import type`, which TypeScript erases.
+
+## Criteria audit 2026-10-10
+
+Walked all 12 acceptance criteria against the implementation. **All 12 now ticked**, but two
+needed work first and one of those was a real gap rather than a missing assertion.
+
+**The shipped coverage was the best of the three audited tickets** — 48 tests across
+`conversations.test.ts`, `transcript.test.ts` and `handlers/reply.test.ts`, and nine criteria
+were already properly asserted, including the two hardest: paging across segment boundaries
+with no gaps or duplicates, and two desks in the same project and department differing only by
+Linux account never mixing transcripts under concurrent traffic.
+
+**`routes/chat.test.ts` did not exist, and a comment said it did.** None of this ticket's three
+endpoints — `GET /conversations/:id/messages`, `GET /sessions/:id/conversation`,
+`POST /conversations/:id/messages` — had ever been called by a test. The functions beneath them
+were well covered, which is exactly what made it easy to miss. Worse,
+`transcript.test.ts`'s bus test pointed a reader at coverage that was never written: "the socket
+half of the journey is proven in realtime/routes/ws.integration.test.ts **and again end to end
+in routes/chat.test.ts**". The only `chat.test.ts` in the repo was `packages/shared`'s, which
+tests the record types. 12 tests now cover the surface, and the comment is true.
+
+Two criteria live specifically at that surface and were therefore only half-asserted:
+
+- **75** — the *function* pages correctly; the criterion names the *endpoint* and its
+  `before=` parameter. The new test walks the round trip a panel actually makes, feeding
+  `next_before` back in as `before`, and asserts the reassembled order equals send order.
+- **73** — "recorded before delivery, so a message that fails to deliver is still visible" is a
+  property of the POST handler. Asserted now without mocking anything: there is no tmux server
+  on a dev host, so delivery genuinely cannot happen, and the test asserts the human's words are
+  in the transcript, attributed to them, and *not* marked delivered.
+
+**One defect found and fixed. A whitespace-only message was delivered as a blank turn.** The
+POST handler validated `text === ""`, while the `author` field beside it goes through this same
+file's `str()` helper, which treats whitespace-only as absent (`raw.trim() !== ""`). So
+`{"body": "   "}` passed validation, was recorded, and was submitted to the agent — costing a
+turn and reading, in the panel, as the human having said nothing. Now `text.trim() === ""`, with
+the reason in a comment. The error message it returns ("body is required and must not be
+empty") had been describing the intent correctly all along; only the check disagreed.
+
+**Criterion 77 had nothing to assert and now does.** "Nothing in this ticket reads a Claude
+transcript file" is a statement about what the code does *not* do, so there is no behaviour to
+test — and the temptation is sitting right there, because every Stop payload carries a
+`transcript_path` (the test fixtures use real ones). Reading it would look like the richer
+option and would produce a chat panel intermittently one turn behind for reasons nobody could
+reproduce, since the file is written asynchronously. There is now a structural test that walks
+every non-test source file in `features/chat/` and fails if any imports a filesystem module,
+mentions `transcript_path`, or mentions `.jsonl`. It asserts it found at least four files first,
+so it cannot pass by scanning nothing — verified by mutation: adding a commented-out
+`payload.transcript_path` to `transcript.ts` fails it and names the file.
+
+**Criterion 70's second half is a seam, not a gap.** The end reasons (paused, model switch,
+crash, a reported `SessionEnd` reason preferred over the inference) are each asserted.
+"Whether context was restored from a handoff" is the `conversation_segments.restored_from_handoff`
+column, which `conversations.ts` sets and which is **always false in steps 1-3** — handoff nodes
+are the knowledge graph, build step 5. Ticked because the column records it and the recording
+path works; the value only becomes interesting at step 5.
+
+### One thing left open, and it is a measurement, not a criterion
+
+**The 50-message ordering test (criterion 74) failed exactly once, and I could not reproduce
+it.** It failed on the first full-suite run of this session and passed in the four runs after it,
+plus every run in isolation. The received order looked lexicographic by body (`m48, m49, m5,
+m6…`), which is what an ordering-by-string would produce — but `seq` is a `bigserial`, the query
+is `order by seq asc`, and the writes are sequential awaits, so there is no mechanism in this
+code that produces it. `seq` *is* projected as `seq::text` (deliberately — a bigint must not
+round-trip through a JS number), which is the only string anywhere near this path.
+
+The one thing that was unusual about that run: it came immediately after `pnpm migrate` applied
+three pending migrations **out of order** — `0003_sessions.sql`, `0004_conversations.sql` and
+`0011_pause.sql` all ran *after* `0013`, which the runner warned about.
+
+Recorded rather than explained, and not ticked as understood. If it recurs, the first thing to
+check is whether anything sorts `seq` as a string on the way back, and the second is the state
+of the `chat_messages_seq` sequence relative to the table.

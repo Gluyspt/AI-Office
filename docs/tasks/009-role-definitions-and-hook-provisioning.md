@@ -40,15 +40,15 @@ None.
 
 ## Acceptance criteria
 
-- [ ] Running `scripts/provision-user.sh gluy` writes a settings file into that user's own `~/.claude` containing all eight hook entries, and installs both agent definitions where `--agent` finds them.
-- [ ] Re-running is idempotent: byte-identical output, and any fragment already present is not duplicated.
-- [ ] Adding a file to `config/hooks/fragments/` and re-provisioning merges its hook entries in, with no edit to `base.settings.json` — verified with a temporary fragment in a test.
-- [ ] Two fragments registering handlers for the same hook event both survive the merge (array concatenation, not replacement).
+- [x] Running `scripts/provision-user.sh gluy` writes a settings file into that user's own `~/.claude` containing all eight hook entries, and installs both agent definitions where `--agent` finds them.
+- [x] Re-running is idempotent: byte-identical output, and any fragment already present is not duplicated.
+- [x] Adding a file to `config/hooks/fragments/` and re-provisioning merges its hook entries in, with no edit to `base.settings.json` — verified with a temporary fragment in a test.
+- [x] Two fragments registering handlers for the same hook event both survive the merge (array concatenation, not replacement).
 - [ ] A session started through ticket 008's API with `--agent dev-lead` reaches `running`, and its SessionStart event arrives at the event server — this is the first end-to-end proof that provisioning worked.
-- [ ] `management-lead.md` states the planning constraint from the design: during planning it is read-only, may read the repo, and may not call `start_session` for workers. (Enforcement is ticket 019; the prompt states it here.)
-- [ ] `dev-lead.md` states that it never spawns directly, only through `start_session`.
-- [ ] Provisioning refuses to write outside the target user's config directory — a test passes a traversal path and asserts rejection.
-- [ ] **Each provisioned account has a git identity.** `user.name` and `user.email` set for the
+- [x] `management-lead.md` states the planning constraint from the design: during planning it is read-only, may read the repo, and may not call `start_session` for workers. (Enforcement is ticket 019; the prompt states it here.)
+- [x] `dev-lead.md` states that it never spawns directly, only through `start_session`.
+- [x] Provisioning refuses to write outside the target user's config directory — a test passes a traversal path and asserts rejection.
+- [x] **Each provisioned account has a git identity.** `user.name` and `user.email` set for the
       agent user, so `git commit` works without a flag. Found 2026-10-07 on `rtdvps`: a freshly
       provisioned `agent1` cannot commit at all —
       `fatal: unable to auto-detect email address (got 'agent1@rtdvps.(none)')`. Delivering work by
@@ -57,32 +57,32 @@ None.
       Assert it by committing as the provisioned user in a scratch repo, not by reading the config
       back — `--global`, `/etc/gitconfig` and a repo-local value all satisfy a file check while
       only some of them satisfy git.
-- [ ] **The identity says what it is.** An agent's commits are attributable to an account a human
+- [x] **The identity says what it is.** An agent's commits are attributable to an account a human
       never types into, so the name must identify the agent and the office rather than look like a
       person — the git log is read by the whole team and by `git blame` forever.
 - [ ] The provisioner never writes a secret into the settings file; secrets are injected as environment variables at launch.
 
-- [ ] **`NODE_EXTRA_CA_CERTS` is exported into the environment every agent is launched with**, and a
+- [x] **`NODE_EXTRA_CA_CERTS` is exported into the environment every agent is launched with**, and a
       test asserts a provisioned session's environment contains it. Spike 002 verified that Claude
       Code's hook client **rejects a self-signed certificate outright** (`tlsv1 alert unknown ca`) and
       that this variable fixes it completely — and that it must be in the *launch environment*, not the
       settings file. Provisioning that emits correct hook URLs but forgets this produces an agent whose
       every hook silently fails.
-- [ ] **The certificate's expiry is checked at provisioning time and surfaced**, not discovered when it
+- [x] **The certificate's expiry is checked at provisioning time and surfaced**, not discovered when it
       lapses. A single shared certificate means **every agent in the office goes silent on the same
       day** it expires. Issue it long-lived — it is self-signed and internal, so there is no revocation
       story worth preserving — and refuse to provision against one already expired.
-- [ ] **Rotating the certificate requires restarting every running agent**, and the ticket says so in
+- [x] **Rotating the certificate requires restarting every running agent**, and the ticket says so in
       its runbook. The launch environment is read once at spawn, exactly like hook config; a rotated
       cert does not reach a live session.
 
-- [ ] **Every agent session is launched with its permission mode set explicitly**, and a test
+- [x] **Every agent session is launched with its permission mode set explicitly**, and a test
       asserts the provisioned launch does not rely on the default. Spike 003 observed that a bare
       `claude` starts in `⏵⏵ auto mode`, and that some commands ran with **no dialog at all**. An
       inherited mode is therefore not the conservative one, and the design's whole permissions model
       ("detect the rest via the `PermissionRequest` hook, which marks the agent blocked in the UI")
       assumes prompts actually happen. If provisioning says nothing, they may not.
-- [ ] **The mode is the most restrictive one under which the role's own allowlist still works** —
+- [x] **The mode is the most restrictive one under which the role's own allowlist still works** —
       pre-approval comes from the role's settings allowlist (design, "Permissions", step 1), never from
       running the agent unconstrained. **`bypassPermissions` / auto-accept is forbidden for agent
       sessions**, and a provisioned config carrying it fails the test.
@@ -216,3 +216,68 @@ whether a session starts.
 its own CLI, so the script adds only the three checks a shell makes better than Node does
 — the account exists, we are root or that account, and as root pass the target's uid/gid —
 and then `exec`s into the module. Writing the logic twice is how the two drift.
+
+## Criteria audit 2026-10-10
+
+Walked all 17 acceptance criteria against the implementation, which is what `## Landed`
+above said nobody had done. **14 ticked, 3 left open on purpose.** 28 tests were added for
+the ones the shipped suite never asserted: 11 in `provision.test.ts` and a new
+`provision.effects.test.ts` (17) for the criteria that are only worth anything if something
+real happens.
+
+**One defect found and fixed, unrelated to any criterion.** `provision.ts` carried **two raw
+NUL bytes** — the composite map key in `mergeOfficeSettings` was written as a literal NUL
+rather than the ` ` escape. The runtime behaviour was correct and the suite passed, but
+ripgrep classifies the file as binary and **skips it**, so the whole 1339-line module was
+invisible to every `grep`/Grep search in the repo. `assertPermissionModeAllowed` is defined
+there and a search for it returned only the test file. That matters here specifically: the
+one-file-one-ticket convention is audited by grep, and `config.ts`'s append-only rule means
+later tickets go looking for `loadXConfig` sections by searching. Now written as the escape,
+same key, same behaviour, file is text. (git's own binary sniff reads only the first 8 KB, so
+`git diff` never showed it — the bytes were past that.)
+
+**Why the three are still open.**
+
+- **Criterion 5 (a session with `--agent dev-lead` reaches `running` and its SessionStart
+  arrives)** — UNVERIFIABLE-HERE. Needs a provisioned Linux account with a real Claude login,
+  which is the same thing 011 exists to do. Left for 011 rather than approximated with a mock,
+  because the whole value of this criterion is that it is end to end.
+- **Criterion 11 (the provisioner never writes a secret into the settings file)** — **NOT MET,
+  and not fixable inside this ticket.** The hook ingest token is written into all eight URLs as
+  `?token=…`. The reason was stated in `provision.ts`'s header when it shipped and the audit
+  **confirmed it rather than taking it on trust**: ticket 005's `hasValidToken` in
+  `features/events/routes/events.ts` reads `request.query.token` and nothing else, so there is
+  no shape today in which the token reaches ingest without being literal in the file. Hook
+  `headers` do interpolate environment variables; `url` does not. So the fix is a two-ticket
+  change — ingest learns an `Authorization` header (005's file, not ours), then these entries
+  become `headers` + `allowedEnvVars` and the file is secret-free. Pinned by a test that fails
+  the day ingest changes, so the decision gets revisited instead of a stale secret sitting in a
+  file nobody looks at. Mitigations as shipped: 0600, owned by the account, per-account and
+  separately rotatable, ingest bound to loopback.
+- **Criterion 17 (the exact flag *or settings key* confirmed against the installed build)** —
+  half confirmed. The flag half is measured on 2.1.283. The settings-key half
+  (`permissions.defaultMode` taking canonical `default` with `manual` an alias) is still the
+  **unverified claim** `## Landed` flagged, and `PERMITTED_PERMISSION_MODES` accepting
+  `"default"` rests on it. The module writes `manual`, which is valid in both vocabularies, so
+  the risk stays contained. One-line check, needs a box with the CLI:
+  `{"permissions":{"defaultMode":"default"}}` in a scratch config dir, see if a session starts.
+
+**What the new tests assert, and how I know they can fail.** Both load-bearing ones were
+mutation-checked rather than trusted because they went green:
+
+- Making fragment merge *replace* instead of concatenate failed 3 tests, including the real
+  temporary-fragment one. This is the convention tickets 020 and 027 depend on.
+- Disabling the expired-certificate guard failed the refusal test — **and left a
+  `/home/office-provision-test-nobody/.claude` behind**, because the run carried on to step 4.
+  The test now asserts no directory appeared, so a regression is two failed expectations
+  instead of litter on someone's disk.
+
+Criterion 9's git identity is exercised by making a **real commit** in a scratch repo with the
+real values and reading `%an <%ae>` back, not by reading the config file — `--global`,
+`/etc/gitconfig` and a repo-local value all satisfy a file check while only some satisfy git.
+The `su`-to-the-account half stays with `scripts/provision-user.sh`, which needs root.
+
+**Still the human's call, unchanged by this audit:** the git identity *form*. `gitIdentityFor`
+ships one identity per Linux account (`AI Office agent (agent1)` /
+`agent1@ai-office.invalid`) and says out loud in its docstring that this is an assumption. It
+is permanent in `git log`. GLU-49.

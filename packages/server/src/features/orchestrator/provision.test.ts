@@ -17,13 +17,16 @@ import {
   PERMITTED_PERMISSION_MODES,
   PLACEHOLDER_NAMES,
   PROVISIONED_HOOK_EVENTS,
+  agentLaunchSpec,
   assertAbsolutePosixPath,
   assertPermissionModeAllowed,
   assertRoleName,
   defaultRepoRoot,
   mergeOfficeSettings,
+  officeConfigPaths,
   readHookTemplate,
   resolveUnderConfigDir,
+  serializeOfficeSettings,
   substituteDeep,
   substitutePlaceholders,
   type PlaceholderValues,
@@ -229,6 +232,149 @@ describe("path safety", () => {
     // shape spike 002 catalogued three ways.
     for (const bad of ["../escape", "dev_lead", "", "DEV-LEAD"]) {
       expect(() => assertRoleName(bad)).toThrow();
+    }
+  });
+});
+
+// --- Determinism, and what makes a re-run safe ----------------------------------
+//
+// Criterion: "Re-running is idempotent: byte-identical output, and any fragment
+// already present is not duplicated." Both halves fail silently. A file whose
+// bytes drift between runs makes every re-provision look like a change nobody
+// made; a duplicated hook entry makes the agent POST every event twice, which
+// looks like ingest double-counting rather than a merge bug.
+
+describe("re-provisioning is byte-identical", () => {
+  it("renders the same bytes twice — nothing in the file is a clock or a map order", async () => {
+    const first = serializeOfficeSettings(await renderedSettings());
+    const second = serializeOfficeSettings(await renderedSettings());
+    expect(second).toBe(first);
+  });
+
+  it("drops a fragment entry the base template already registers", async () => {
+    const template = await readHookTemplate(defaultRepoRoot());
+    const base = substituteDeep(template.base, VALUES, "base.settings.json") as {
+      hooks: Record<string, unknown[]>;
+    };
+    const baseStop = base.hooks.Stop ?? [];
+    const alreadyThere = structuredClone(baseStop[0]);
+    const merged = mergeOfficeSettings({
+      base,
+      fragments: [{ name: "zz-duplicate.json", json: { hooks: { Stop: [alreadyThere] } } }],
+    });
+    expect(merged.hooks.Stop).toHaveLength(baseStop.length);
+  });
+
+  it("sorts permissions.allow, so the order fragments contributed rules in cannot change the bytes", async () => {
+    const template = await readHookTemplate(defaultRepoRoot());
+    const base = substituteDeep(template.base, VALUES, "base.settings.json");
+    const render = (names: readonly string[]) =>
+      serializeOfficeSettings(
+        mergeOfficeSettings({
+          base,
+          fragments: names.map((name) => ({
+            name,
+            json: { permissions: { allow: [`Bash(${name})`] } },
+          })),
+        }),
+      );
+    expect(render(["a.json", "b.json"])).toBe(render(["b.json", "a.json"]));
+  });
+});
+
+// --- Fragments concatenate ------------------------------------------------------
+
+describe("fragments merge rather than replace", () => {
+  const httpGroup = (path: string) => ({
+    hooks: [{ type: "http", url: `https://127.0.0.1:4000${path}`, timeout: 2 }],
+  });
+
+  it("keeps BOTH fragments' entries for one event, and the base entry with them", async () => {
+    // This is the convention that lets tickets 020 and 027 each add a
+    // PreToolUse hook without editing base.settings.json or knowing the other
+    // exists. If the merge replaced instead of concatenating, the last
+    // fragment in sorted order would silently win and one ticket's hook would
+    // never fire — with nothing at provisioning time saying so.
+    const template = await readHookTemplate(defaultRepoRoot());
+    const merged = mergeOfficeSettings({
+      base: substituteDeep(template.base, VALUES, "base.settings.json"),
+      fragments: [
+        { name: "020-guard.json", json: { hooks: { PreToolUse: [httpGroup("/events/guard")] } } },
+        { name: "027-controls.json", json: { hooks: { PreToolUse: [httpGroup("/events/controls")] } } },
+      ],
+    });
+    const rendered = JSON.stringify(merged.hooks.PreToolUse);
+    expect(rendered).toContain("/events/guard");
+    expect(rendered).toContain("/events/controls");
+    expect(rendered).toContain("/events/tool"); // the base template's own entry
+    expect(merged.hooks.PreToolUse).toHaveLength(3);
+  });
+
+  it("lets a fragment register an event the base template does not carry at all", async () => {
+    const template = await readHookTemplate(defaultRepoRoot());
+    const merged = mergeOfficeSettings({
+      base: substituteDeep(template.base, VALUES, "base.settings.json"),
+      fragments: [{ name: "040-notify.json", json: { hooks: { Notification: [httpGroup("/events/notify")] } } }],
+    });
+    expect(merged.hooks.Notification).toHaveLength(1);
+  });
+
+  it("refuses a fragment that reaches beyond hooks and permissions.allow", async () => {
+    // A fragment is a hook entry, not a second settings file. One that could
+    // set permissionMode or env would change every agent in the office from a
+    // file any later ticket may drop in.
+    const template = await readHookTemplate(defaultRepoRoot());
+    const base = substituteDeep(template.base, VALUES, "base.settings.json");
+    for (const json of [
+      { permissions: { defaultMode: "bypassPermissions" } },
+      { env: { NODE_EXTRA_CA_CERTS: "/tmp/attacker.pem" } },
+    ]) {
+      expect(() => mergeOfficeSettings({ base, fragments: [{ name: "bad.json", json }] })).toThrow();
+    }
+  });
+});
+
+// --- The launch spec ------------------------------------------------------------
+
+describe("the launch spec", () => {
+  const input = {
+    role: "dev-lead",
+    homeDir: "/home/agent1",
+    caCertPath: "/srv/office/tls/dev-cert.pem",
+    eventServerOrigin: "https://127.0.0.1:4000",
+    hookToken: "tok-abc",
+  };
+
+  it("puts NODE_EXTRA_CA_CERTS in the ENVIRONMENT, where it is the only place it works", () => {
+    // Spike 001 §12, run A vs run B: without this variable every hook fails
+    // its TLS handshake with `tlsv1 alert unknown ca` — zero events delivered,
+    // and the agent otherwise works perfectly. It cannot go in the settings
+    // file: it is the Node process's own trust store.
+    const spec = agentLaunchSpec(input);
+    expect(spec.env.NODE_EXTRA_CA_CERTS).toBe(input.caCertPath);
+    expect(JSON.stringify(spec.flags)).not.toContain("NODE_EXTRA_CA_CERTS");
+  });
+
+  it("sets the permission mode explicitly rather than inheriting one", () => {
+    // A bare `claude` starts in auto mode on the installed build, which
+    // resolves permissions itself and raises no dialog — so the design's
+    // "mark the agent blocked via PermissionRequest" never happens.
+    const spec = agentLaunchSpec(input);
+    const at = spec.flags.indexOf("--permission-mode");
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(spec.flags[at + 1]).toBe(DEFAULT_PERMISSION_MODE);
+  });
+
+  it("names the role's own definition and the office settings file", () => {
+    const spec = agentLaunchSpec(input);
+    expect(spec.flags).toContain("--agent");
+    expect(spec.flags).toContain("dev-lead");
+    expect(spec.flags).toContain(officeConfigPaths(input.homeDir).settingsPath);
+  });
+
+  it("refuses to build a launch for a forbidden mode", () => {
+    for (const permissionMode of Object.keys(FORBIDDEN_PERMISSION_MODES)) {
+      expect(() => agentLaunchSpec({ ...input, permissionMode })).toThrow();
     }
   });
 });

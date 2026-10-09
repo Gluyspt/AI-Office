@@ -168,7 +168,13 @@ export default async function chatRoutes(app: FastifyInstance): Promise<void> {
 
     const text = typeof body.body === "string" ? body.body : undefined;
     const author = str(body.author);
-    if (text === undefined || text === "") {
+    // `trim()`, not `=== ""`, and for the same reason `str()` above trims:
+    // a body of three spaces is empty by the intent of this check, and
+    // without the trim it passed here and was delivered — submitting a blank
+    // turn to the agent, which costs a turn and reads as the human having
+    // said nothing. Found by the 2026-10-10 criteria audit; the author field
+    // next to it had always been trimmed.
+    if (text === undefined || text.trim() === "") {
       return reply.code(400).send({ error: "body is required and must not be empty" });
     }
     if (author === undefined) {

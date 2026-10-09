@@ -478,7 +478,7 @@ export function mergeOfficeSettings(
     const validated = validateHookGroups(groups, event, "base.settings.json", "invalid_template");
     hooks[event] = [];
     for (const group of validated) {
-      const key = `${event} ${canonical(group)}`;
+      const key = `${event}\u0000${canonical(group)}`;
       if (seen.has(key)) continue;
       seen.add(key);
       hooks[event].push(group);
@@ -524,7 +524,7 @@ export function mergeOfficeSettings(
       const validated = validateHookGroups(groups, event, where, "invalid_fragment");
       const target = (hooks[event] ??= []);
       for (const group of validated) {
-        const key = `${event} ${canonical(group)}`;
+        const key = `${event}\u0000${canonical(group)}`;
         if (seen.has(key)) continue;
         seen.add(key);
         target.push(group);
