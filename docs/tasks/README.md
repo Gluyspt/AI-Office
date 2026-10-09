@@ -213,7 +213,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `docs/spikes/001-hook-payloads.md` | 002 |
 | `docs/spikes/002-tmux-tui-control.md` | 003 |
 | `docs/spikes/002-vps-results/*.tsv` | 007 (raw output of its re-measurement) |
-| `docs/spikes/003-mcp-wiring.md` | 016 |
+| `docs/spikes/003-mcp-wiring.md`, `spikes/mcp/probe-server.mjs` | 016 |
 | `docs/runbooks/spine-verification.md` | 011 |
 | `docs/runbooks/coordination-verification.md` | 021 |
 | `docs/runbooks/step3-acceptance.md` | 030 |
@@ -267,7 +267,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 
 ## Decisions made
 
-Twenty-six questions the design left open have been settled and written into the tickets. Recorded here because several change behaviour the design describes differently.
+Thirty-one questions the design left open have been settled and written into the tickets. Recorded here because several change behaviour the design describes differently.
 
 | Decision | Lands in |
 | --- | --- |
@@ -297,6 +297,11 @@ Twenty-six questions the design left open have been settled and written into the
 | **The orchestrator owns the mid-turn message queue, and the queue must survive a restart.** Settled 2026-10-07, and not because tmux failed: the measurement that was meant to decide it **cannot** — `interleaved` vs `queued` is drawn by comparing two pane-scraped timestamps ≤ 14 ms apart in 14 of 20 trials, against a 100 ms poll. Delivery is solid (20/20, never dropped); ordering is unobservable, and an unobservable behaviour is not a foundation. Corollary: a message queued before `Escape` still ran in 17 of 19 trials and was discarded in 2, so interrupting must mean *not sending*. | 008, 027, 028 |
 | **`default` is not a valid `--permission-mode` value, and `auto` is now the CLI default.** On 2.1.283 the choices are `acceptEdits, auto, bypassPermissions, manual, dontAsk, plan` — yet `default` is what hook payloads report, so provisioning it names something the CLI rejects. `manual` prompts; **`auto` and `dontAsk` are disqualifying for agents** on the same grounds as `bypassPermissions`, because `PermissionRequest` never fires if nothing asks. Found by a criterion that reported `no_dialog` three times and blamed the allowlist. | 009, 007, 027 |
 | **A message delivered while a permission dialog is up approves the pending call — confirmed on the target, 20/20, with proof of execution.** WSL saw 3/3; the VPS agrees at full trial count and the approved command left its file on disk. Ticket 008's gate on dialog state is a requirement, not a precaution. | 008, 007 |
+| **Per-role MCP servers attach through the role file's own `mcpServers:` frontmatter, over HTTP to the orchestrator's existing listener.** A native agent-definition field that connects at startup under `--agent`, and 009 already installs those files — so per-role wiring costs no new launch flag. HTTP rather than stdio because under stdio the process count is servers × **agents**, not servers × projects: against the measured ~290 MB idle agent and ~6-agent ceiling on a 3.2 GB box, three stdio servers per desk spend the cap on overhead and multiply Postgres connections. The office's task and session tools are routes on a server already running. Spike 003. | 016, 017, 018 |
+| **A tool call's identity comes from `${VAR}` expansion into the MCP config from the launch environment** — the same channel that already carries `NODE_EXTRA_CA_CERTS`. Expansion works in `command`, `args`, `env`, `url` and `headers`, so the model never sees the credential and cannot change it by calling a tool differently. Spike 003 §3. | 016, 017, 018 |
+| **The office needs a per-SESSION secret, and 008 must mint it.** `sessions` has no token column and the only secret today is 009's per-**account** `HOOK_INGEST_TOKEN`. One Linux account hosts several desks by design, so an account token cannot distinguish them — and `claim_task` "checks owner match", which would silently degrade to "same teammate". Spike 003 §3.2. | 008, 009, 017, 018 |
+| **An MCP credential that still looks like `${...}` must be refused.** An unset variable does NOT fail the server: the config loads with the literal placeholder, the warning goes only to `claude mcp list`, and every desk then presents the same string as its identity. The `NODE_EXTRA_CA_CERTS` failure shape again — works perfectly, silently wrong. Spike 003 §3.3. | 017, 018 |
+| **MCP tool calls need pre-approval, so 009's empty allowlist blocks every task tool.** In `manual` mode an unlisted `claim_task` prompts and parks the desk. 009's base settings must allow `mcp__office_tasks__*` and `mcp__office_session__*`. **`"mcp__*"` as an ALLOW rule silently approves nothing** — an unanchored allow glob is skipped with a warning while looking permissive; the server segment must be glob-free. It *is* valid as a deny rule. A `mcp__` rule with parentheses is dropped entirely. Spike 003 §6. | 009, 016, 017, 020 |
 
 ## Still open before starting
 
