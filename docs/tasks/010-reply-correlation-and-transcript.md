@@ -175,6 +175,20 @@ The one thing that was unusual about that run: it came immediately after `pnpm m
 three pending migrations **out of order** — `0003_sessions.sql`, `0004_conversations.sql` and
 `0011_pause.sql` all ran *after* `0013`, which the runner warned about.
 
-Recorded rather than explained, and not ticked as understood. If it recurs, the first thing to
-check is whether anything sorts `seq` as a string on the way back, and the second is the state
-of the `chat_messages_seq` sequence relative to the table.
+**A second, unrelated ordering test then failed once in the same way** — `tasks/repo.test.ts`'s
+"returns the full state history inline, oldest first" (013's file), also once in seven full runs,
+also passing in isolation. Two "a list came back in the wrong order" one-offs on the same shared
+dev Postgres in one session.
+
+**The obvious cause for the second one was measured and disproved**, which is recorded so nobody
+repeats it. `taskStateHistory` orders by `occurred_at asc, id asc` and `id` is a random uuid, so a
+tie on `occurred_at` would resolve arbitrarily versus insertion order — and `occurred_at` defaults
+to `now()`, which is transaction start time. Against the real table: **0 tied
+`(task_id, occurred_at)` groups in 182 rows, and a minimum gap between consecutive transitions of
+one task of 5.785 ms (median 8.971 ms)** against microsecond resolution. Four orders of magnitude
+from a tie. That ordering is not the cause.
+
+Both are **recorded rather than explained**, and neither is ticked as understood. Tracked in
+GLU-54 with the queries. If either recurs: re-run before believing it (two for two have been false
+alarms), then check whether anything sorts `seq` as a string on the way back, and the state of the
+`chat_messages_seq` sequence relative to the table.
