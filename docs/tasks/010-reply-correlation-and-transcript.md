@@ -188,7 +188,19 @@ to `now()`, which is transaction start time. Against the real table: **0 tied
 one task of 5.785 ms (median 8.971 ms)** against microsecond resolution. Four orders of magnitude
 from a tie. That ordering is not the cause.
 
+**Correction to the hint above, made 2026-10-10 after 026 read this code.** The suggestion to
+"check whether anything sorts `seq` as a string" points at something that **cannot exist on the
+record path**. `transcript.ts` projects `seq::text` (line 55) and then `toMessage` immediately does
+`seq: Number(row.seq)` (line 90) — and the cast's own comment says why it is there: *"int8 arrives
+as a string from node-postgres anyway; the cast makes that explicit rather than depending on driver
+behaviour."* So `seq` is a **number** by the time anything outside this module sees it, the ordering
+itself comes from SQL's `order by seq asc` on the bigint column, and no string comparison is
+reachable in between.
+
+That removes the only candidate mechanism and makes the observation **more** puzzling, not less. It
+is left standing as an unexplained one-off rather than tidied away.
+
 Both are **recorded rather than explained**, and neither is ticked as understood. Tracked in
-GLU-54 with the queries. If either recurs: re-run before believing it (two for two have been false
-alarms), then check whether anything sorts `seq` as a string on the way back, and the state of the
-`chat_messages_seq` sequence relative to the table.
+GLU-54. If either recurs: re-run before believing it (two for two have been false alarms), then
+check the state of the `chat_messages_seq` sequence relative to the table — and do not spend time
+on a string sort, which is ruled out above.
