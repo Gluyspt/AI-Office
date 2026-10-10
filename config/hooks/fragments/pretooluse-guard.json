@@ -1,0 +1,23 @@
+{
+  "//": "Ticket 020 — the PreToolUse ownership guard. TWO hooks on one event group, on purpose, and they do different jobs. (1) The http entry IS the decision: spike 001 §2b measured an http hook blocking a PreToolUse on build 2.1.278 with hookSpecificOutput.permissionDecision:'deny', so the block needs no script and pays no process spawn (~20 ms, almost entirely spawn, versus sub-millisecond transport on loopback). (2) The command entry is the OUTAGE RECORD: an http hook that cannot reach the orchestrator simply fails and leaves no trace, and this ticket's decided behaviour is to fail open but NEVER silently — so the script buffers the attempt to disk and flushes it on recovery. An http hook cannot write a file; that is the whole reason the script survives. NEVER answer this hook with continue:false — measured twice: the tool runs IN FULL and then no turn-end event fires at all, which both leaks the content the guard exists to protect and hangs the chat panel. The matcher is derived from CHECKED_TOOLS in packages/server/src/features/locks/guard-check.ts and a test asserts the two still match. There is deliberately no PostToolUse entry here: the heartbeat hangs off the base template's existing unmatched PreToolUse entry instead — see features/locks/handlers/tool.ts for the three reasons. Both timeouts are explicit because the default is 30 s and it stalls the whole turn (spike 001 §2). PREREQUISITE ON THE AGENT BOX: jq, used by the script to pull file paths out of a payload without touching tool_input.content. Without it the buffer still records that an unguarded mutating call happened, with no path and an extract note saying so.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "${EVENT_SERVER_ORIGIN}/guard/check?token=${HOOK_INGEST_TOKEN}",
+            "timeout": 2
+          },
+          {
+            "type": "command",
+            "command": "'${REPO_ROOT}/hooks/pretooluse-guard.sh'",
+            "timeout": 2,
+            "statusMessage": "Checking file ownership…"
+          }
+        ]
+      }
+    ]
+  }
+}

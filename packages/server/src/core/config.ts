@@ -675,3 +675,63 @@ export function loadResumeSpawnConfig(env: NodeJS.ProcessEnv = process.env): Res
   finish(reader);
   return { projectRoot, claudeBin };
 }
+
+// --- Ticket 020: the PreToolUse ownership guard ---------------------------------
+//
+// Appended per the manifest exception: a later ticket may add its own
+// self-contained `loadXConfig()`. Editing an existing section, the shared
+// readers or ConfigError still belongs to 004.
+
+export interface GuardConfig {
+  /**
+   * The guard's whole budget, in milliseconds, including the database work.
+   *
+   * ~2 s is the ticket's decided fail-open deadline and it is a *hook*
+   * timeout first: spike 001 measured the default at 30 s and the turn held
+   * for all of it, so `"timeout": 2` is set explicitly on the hook entry in
+   * config/hooks/fragments/pretooluse-guard.json. This value is the server
+   * half of the same number — `POST /guard/check` abandons its own check and
+   * answers "allow" rather than letting the agent's client hit that timeout,
+   * because a timeout at the client is indistinguishable from an unreachable
+   * orchestrator and loses the chance to say why.
+   *
+   * Optional with a default, unlike LOCK_TTL_SECONDS. Nothing is chosen by
+   * this number that cannot be seen: too low and the guard fails open and
+   * says so in an event; too high and the hook timeout catches it anyway. The
+   * value that MUST be set deliberately is the hook entry's, and that lives
+   * in the fragment where an operator reads it beside the URL.
+   */
+  readonly checkTimeoutMs: number;
+  /**
+   * Largest number of buffered edits one flush may carry.
+   *
+   * The buffer is size-capped on the agent's box too (it drops oldest-first
+   * and reports the count), so this is the second of two caps rather than the
+   * only one. It exists because the script's cap is configurable on a machine
+   * the orchestrator does not control: an agent box with a cap of a million
+   * must not be able to hand the server a million-row insert while someone is
+   * trying to recover from an outage.
+   */
+  readonly flushMaxEdits: number;
+}
+
+const DEFAULT_GUARD_CHECK_TIMEOUT_MS = 2_000;
+const DEFAULT_GUARD_FLUSH_MAX_EDITS = 1_000;
+
+export function loadGuardConfig(env: NodeJS.ProcessEnv = process.env): GuardConfig {
+  const reader: Reader = { env, problems: [] };
+  const checkTimeoutMs = optionalInt(
+    reader,
+    "GUARD_CHECK_TIMEOUT_MS",
+    DEFAULT_GUARD_CHECK_TIMEOUT_MS,
+    1,
+  );
+  const flushMaxEdits = optionalInt(
+    reader,
+    "GUARD_FLUSH_MAX_EDITS",
+    DEFAULT_GUARD_FLUSH_MAX_EDITS,
+    1,
+  );
+  finish(reader);
+  return { checkTimeoutMs, flushMaxEdits };
+}
