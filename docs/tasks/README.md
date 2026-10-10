@@ -213,7 +213,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `docs/spikes/001-hook-payloads.md` | 002 |
 | `docs/spikes/002-tmux-tui-control.md` | 003 |
 | `docs/spikes/002-vps-results/*.tsv` | 007 (raw output of its re-measurement) |
-| `docs/spikes/003-mcp-wiring.md`, `spikes/mcp/probe-server.mjs` | 016 |
+| `docs/spikes/003-mcp-wiring.md`, `spikes/mcp/probe-server.mjs`, `spikes/mcp/run-016.sh` | 016 |
 | `docs/runbooks/spine-verification.md` | 011 |
 | `docs/runbooks/coordination-verification.md` | 021 |
 | `docs/runbooks/step3-acceptance.md` | 030 |

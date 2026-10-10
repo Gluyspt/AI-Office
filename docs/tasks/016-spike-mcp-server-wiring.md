@@ -116,9 +116,34 @@ glob-free. (`mcp__*` *is* valid in a deny rule; the asymmetry is the trap.) And 
 containing parentheses is dropped entirely when a settings file loads, so there is no parameter
 matching in MCP allow rules.
 
-### Deviation from this ticket's scope, stated
+### Deviations from this ticket's scope, stated
 
-The scope says the probe exposes "one tool". It exposes three. The ticket's own criterion about
+**A third file: `spikes/mcp/run-016.sh`.** The scope names two. The runner exists because the four
+remaining measurements are the whole value of the open criteria, and leaving them as prose is how a
+spike gets "finished" with its expensive half never run — 007 set the precedent by staging
+`~/run-007a.sh` gated on `~/.claude.json` rather than describing it. It gates every precondition
+before spending anything and has a `--dry-run`.
+
+It also **automates two of the four without an interactive session**, which was not obvious when
+the spike was written: `claude mcp list` health-checks approved servers, and health-checking a
+stdio server means spawning it, so the probe's own log captures the environment Claude Code gave
+it. That halves what the single-session login has to pay for.
+
+Phase B (the error-text and allowlist measurements) is **deliberately not automated** — driving a
+live TUI is ticket 007's machinery (`spikes/tmux/drive-session.sh`, 69 KB), and a second TUI driver
+inside 016 would be another ticket's work duplicated and two drivers to keep correct. Phase B
+prints the exact steps and the exact strings to grep for.
+
+**MEASURED HERE while building it, and it changed the runner's design:** `--mcp-config` does **not**
+reach the `mcp list` subcommand. Passed *after* it, `mcp list` fails with
+`error: unknown option '--mcp-config'`; passed *before* it, **the flag is silently ignored** and
+only persisted servers are health-checked (verified: the probe was never spawned, no log written).
+Another flag that looks accepted and does nothing. So the runner persists the server with
+`claude mcp add-json --scope local` and removes it afterwards, which is acceptable only because the
+target is a purpose-created throwaway agent account.
+
+**And the probe exposes three tools, not the "one tool" the scope names.** The ticket's own criterion
+about error text cannot be answered with one. The ticket's own criterion about
 error text cannot be answered with one tool: `fail_soft` (an `isError` result) and `fail_hard` (a
 JSON-RPC error) are the two failure shapes, and they *are* the measurement.
 
