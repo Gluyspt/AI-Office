@@ -1,0 +1,489 @@
+/* The chat panel. Tokens only — a hex code or a raw pixel gap here would be
+ * a bug in this feature, not a local decision (see src/styles/global.css).
+ *
+ * The panel is docked, not modal: there is no full-screen backdrop, because
+ * reading the board while talking to an agent about it is the normal case —
+ * and because a backdrop from one overlay would swallow clicks meant for
+ * another (022's host mounts every overlay side by side).
+ */
+
+.chat-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(440px, 100vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-overlay);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  /* Slides in. Mounted at translateX(100%) and released on the next frame,
+   * so there are two states to animate between. */
+  transform: translateX(100%);
+  transition: transform 160ms ease-out;
+}
+
+.chat-panel[data-open="true"] {
+  transform: none;
+}
+
+/* While the socket is down the panel says so in words (see the notice) and
+ * is dimmed, so it cannot present a possibly-incomplete transcript as live.
+ * The board does the same thing for the same reason. */
+.chat-panel[data-stale="true"] .chat-transcript {
+  opacity: 0.75;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-panel {
+    transition: none;
+  }
+}
+
+/* --- Header -------------------------------------------------------------- */
+
+.chat-panel__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-panel__who {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  margin-right: auto;
+}
+
+.chat-panel__title {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.chat-panel__subtitle {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.chat-panel__task {
+  font-size: var(--text-sm);
+  color: var(--accent);
+}
+
+.chat-panel__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chat-panel__model {
+  display: inline-flex;
+  align-items: baseline;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.chat-panel__close {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: var(--text-lg);
+  line-height: 1;
+  padding: var(--space-1) var(--space-2);
+}
+
+.chat-panel__close:hover {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+/* --- Notices and the activity line --------------------------------------- */
+
+.chat-panel__notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-panel__notice--warn {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+
+.chat-panel__notice--error {
+  background: var(--error-surface);
+  color: var(--error);
+}
+
+.chat-panel__actions-toggle {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-4) 0;
+}
+
+.chat-panel__activity {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+
+/* --- Transcript ---------------------------------------------------------- */
+
+.chat-transcript {
+  /* `min-height: 0` is what lets the scroll container actually scroll inside
+   * a flex column instead of growing the panel past the viewport. */
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-transcript__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.chat-transcript__top,
+.chat-transcript__start,
+.chat-transcript__empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* The "N new messages" affordance. Floats over the end of the list rather
+ * than scrolling the view: a live message must never yank the page out from
+ * under someone reading history. */
+.chat-transcript__unread {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-3);
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: 999px;
+  padding: var(--space-2) var(--space-4);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+/* --- Messages ------------------------------------------------------------ */
+
+.chat-message {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-raised);
+}
+
+/* A human's own words sit apart from the agent's. Not by colour alone: the
+ * attribution line names the sender on every message, and the alignment and
+ * surface are reinforcement. */
+.chat-message[data-direction="outbound"] {
+  background: var(--info-surface);
+  border-color: transparent;
+  margin-left: var(--space-5);
+}
+
+.chat-message[data-direction="inbound"] {
+  margin-right: var(--space-5);
+}
+
+.chat-message[data-delivery="failed"] {
+  border-color: var(--error);
+  border-style: dashed;
+}
+
+.chat-message[data-delivery="queued"] {
+  border-color: var(--warning);
+  border-style: dashed;
+}
+
+.chat-message__head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.chat-message__author {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.chat-message__role {
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.chat-message__time {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.chat-message__body {
+  margin: 0;
+  /* The agent's own line breaks survive; nothing is interpreted. Message
+   * text is rendered as text — see ChatTranscript.tsx. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.chat-message__delivery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.chat-message__delivery[data-delivery-status="failed"] {
+  color: var(--error);
+}
+
+.chat-message__delivery[data-delivery-status="queued"] {
+  color: var(--warning);
+}
+
+.chat-message__detail {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.chat-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.chat-link:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* --- Session boundary ---------------------------------------------------- */
+
+/* The divider is deliberately loud. It is the one thing in the panel that
+ * contradicts what the screen otherwise implies — that the agent has read
+ * everything above it. Dashed, so the break survives greyscale. */
+.chat-divider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.chat-divider__rule {
+  height: 0;
+  border-top: 1px dashed var(--border-strong);
+}
+
+.chat-divider__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.chat-divider__title {
+  margin: 0;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.chat-divider__why,
+.chat-divider__handoff {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+.chat-divider__memory {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* --- Recent actions ------------------------------------------------------ */
+
+/* Subordinate to the conversation by every available signal: no bubble, no
+ * surface of its own, smaller muted type, and a left rule that reads as a
+ * margin note rather than as something anyone said. */
+.chat-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border);
+}
+
+.chat-actions__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.chat-action {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.chat-action__tool {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.chat-action__detail {
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-actions__more {
+  align-self: flex-start;
+  font-size: var(--text-sm);
+}
+
+/* --- Composer ------------------------------------------------------------ */
+
+.chat-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.chat-composer__label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.chat-composer__author {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chat-composer__input {
+  font: inherit;
+  width: 100%;
+  resize: vertical;
+  padding: var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-page);
+  color: var(--text);
+}
+
+.chat-composer__row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.chat-composer__note {
+  margin: 0;
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.chat-composer__warning {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--warning);
+  background: var(--warning-surface);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+}
+
+.chat-composer__send {
+  font: inherit;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+
+.chat-composer__send:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* Phone width: the panel is the page. Nothing inside has a min-width wider
+ * than a phone, and the long strings — file paths, tmux names, delivery
+ * detail — all wrap with `overflow-wrap: anywhere` rather than pushing it
+ * sideways. */
+@media (max-width: 480px) {
+  .chat-panel {
+    width: 100vw;
+    border-left: none;
+  }
+
+  .chat-message[data-direction="outbound"] {
+    margin-left: var(--space-3);
+  }
+
+  .chat-message[data-direction="inbound"] {
+    margin-right: var(--space-3);
+  }
+}
