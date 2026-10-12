@@ -319,6 +319,30 @@ fallback and is superseded wherever root exists. Remaining human step: one inter
   collapse to `[Pasted text #N]` in the rendered pane, so the criterion above asking for the measured
   limit in a code comment cannot be satisfied by scraping — it needs the harness's own instrumentation.
 
+### Added 2026-10-12 — measure a WORKING desk, not an idle one
+
+018's two spawn limits ship as required config with no default, and the question "what values?" was
+put to a human on 2026-10-12. The answer was **measure first**, and the reason is a gap in what is
+already known rather than caution: **~290 MB is the *idle* figure.** Nobody has measured a desk
+mid-turn — reading files, holding a transcript, running a tool — and that is the number both limits
+actually depend on. Guessing from the idle figure sets a cap that is wrong in an unknown direction.
+
+This ticket owns the VPS re-measurement (see the ownership note in `README.md`'s decisions), so the
+reading lands here:
+
+- [ ] RSS of a desk **mid-turn**, not idle: during a file read, during a tool call, and holding a
+      long transcript. Three readings, not an average of one.
+- [ ] The same for two and three concurrent working desks, since the interesting failure is
+      contention rather than a single process.
+- [ ] `MemAvailable` at each point, so the global floor has a basis. The cold-run minimum of
+      1 439 MB is the only figure that exists today and it was measured with `pnpm install` running,
+      which is not the shape of a working office.
+- [ ] Both numbers then written into the deploy config with the readings cited beside them, per
+      015's lock-TTL precedent: no default ships, so the value is chosen deliberately on the box.
+
+Runs in the same sitting as criterion (b) and the interactive `/login` — all three need the box and
+the server admin, and batching them is the point.
+
 ## Open questions
 
 - [x] ~~The design's sudoers example lists `gluy`, `user2`, `user3`.~~ **Half answered 2026-10-07.**
@@ -340,9 +364,26 @@ fallback and is superseded wherever root exists. Remaining human step: one inter
       interactive `/login` on `agent1`, which is also when the folder-trust dialog must be cleared:
       a fresh account trusts nothing, and §4 of the spike found Enter does not dismiss that dialog,
       so an unattended first run parks on it with tmux reporting a live session.
-- [ ] Granting `NOPASSWD: /usr/bin/tmux` in full lets `office` run `tmux new-session` with **any** command as those users. The design accepts this; note that a tighter rule would need a wrapper script. Not changing it here, but recording it as a deliberate choice rather than an oversight.
-- [ ] **Should the Claude Code CLI version be pinned on the VPS? — STRONGER EVIDENCE 2026-10-07,
-      still open.** Two things moved under the build in a single day's measuring: **auto mode became
+- [x] ~~Granting `NOPASSWD: /usr/bin/tmux` in full lets `office` run `tmux new-session` with **any**
+      command as those users.~~ **Answered by a human 2026-10-12: accept it as-is, and the reason is
+      a decision already taken rather than a tolerance for risk.** The grant's blast radius is
+      bounded by this ticket's own refusal of privileged accounts: it reaches `agent1/2/3` only —
+      purpose-created accounts holding nothing of `rtd`, `ronna`, `korn` or `music`. A wrapper would
+      guard against `office` *itself* being compromised, which is a different threat from the one
+      originally flagged, and it would add a new place session launch can break: argument handling
+      here is already subtle enough that the session name eats the message payload. Revisit if
+      `office` ever runs code it did not author — step 8's preview containers are the first
+      candidate.
+- [x] ~~**Should the Claude Code CLI version be pinned on the VPS?**~~ **Answered by a human
+      2026-10-12: pin it, and align the dev host to the same build.** The VPS pins at **2.1.283**
+      and the dev host moves **2.1.268 → 2.1.283**, so one version runs in both places and a bump
+      becomes a deliberate act with a re-measurement attached. Aligning dev is the half that is easy
+      to skip and shouldn't be: a version skew between where the code is written and where it runs
+      is how one of the two surprises below stayed hidden. Two follow-on actions, neither owned by
+      this ticket's code: hold the package on the VPS so `unattended-upgrades` cannot move it, and
+      record the CLI version at session start so a bump that happens anyway is visible in the
+      timeline rather than arriving as unexplained behaviour. The evidence that decided it:
+      Two things moved under the build in a single day's measuring: **auto mode became
       Claude Code's default permission mode**, which silently removed the permission dialog and made
       one of this ticket's criteria unmeasurable until the mode was forced; and the
       `--permission-mode` vocabulary no longer contains `default`, the value hook payloads still
