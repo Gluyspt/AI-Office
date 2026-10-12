@@ -65,9 +65,14 @@ fails at lock acquisition leaves a task `in_progress` that no agent is working o
 find. So the DAS exposes `tx(run)` yielding a handle that is explicitly passable, and the boundary
 test records the one pair that passes it.
 
-**Therefore `tasks` and `locks` are one deployment unit**, and the design says so out loud (§3,
-footnote 1) rather than letting a future split discover it. They get separate contracts and separate
-grants; they do not get separate processes until a claim becomes a saga.
+**Therefore `tasks` and `locks` are one deployment unit — permanently.** Settled 2026-10-12 by
+counting the transactions instead of recalling them: there are **four** spanning two services, not
+one. `claim_task` and `complete_task` span tasks + locks; `pause` and `resume` span *control* +
+tasks + locks (`pause.ts:856`, `resume.ts:482`). Each protects the same class of failure — a task
+and its file scope disagreeing about who owns what — and a saga would need a compensating action per
+transaction, any of which can itself fail and produce exactly the state the transaction made
+unreachable. The saga option is rejected, not deferred. Inventory and consequences in §3.1 of the
+design; the `control` rows are a prerequisite on 040.
 
 **`withTransaction`'s rollback must not swallow the original error.** Today's implementation does
 `catch { await client.query("ROLLBACK"); throw error }` — if the `ROLLBACK` itself throws, the

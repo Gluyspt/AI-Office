@@ -4,7 +4,7 @@ title: "Control service: its own process, its own privilege"
 build_step: boundaries
 department: dev
 estimated_model: opus
-blocked_by: ["034", "038", "039"]
+blocked_by: ["028", "034", "038", "039"]
 ---
 
 # 040 — Control service: its own process, its own privilege
@@ -12,7 +12,7 @@ blocked_by: ["034", "038", "039"]
 **Build step:** boundaries
 **Department:** dev
 **Estimated model:** opus — the first real process boundary in the system, holding the `sudo` grant, and the ticket where a wrong transport choice is expensive to undo.
-**Blocked by:** 034, 038, 039
+**Blocked by:** 028 (its pause/resume split — see "The prerequisite"), 034, 038, 039
 
 ## Why
 
@@ -39,6 +39,33 @@ one.
 
 And it is the split that gets more expensive every month it waits: every new ticket that calls into
 `control` in-process is another edge to unpick.
+
+## The prerequisite — found 2026-10-12, after this ticket was first written
+
+Answering the design's Q2 ("do `tasks` and `locks` stay one deployment unit?") meant counting the
+transactions that span two services instead of recalling them. There are four, not one, and **two of
+them start here**:
+
+- `pause` (`orchestrator/pause.ts:856`) — `transition(…, client)` and `setLocksPaused(taskId, true,
+  client)` in one transaction, so a paused task can never exist with unmarked locks the sweeper will
+  expire out from under it.
+- `resume` (`orchestrator/resume.ts:482`) — `transition`, `setLocksPaused(false)` and `heartbeat`,
+  with the file's own comment saying why all three: *"a paused lock's TTL has almost certainly
+  expired while the work was paused, so clearing `paused` without restarting the clock hands the
+  sweeper a live-but-expired lock and the task loses the files it was resumed to work on."*
+
+**So `control` as it stands cannot move to another process.** A transaction cannot span two
+processes, and a saga here is rejected for the reason in §3.1 of the design: a compensating action
+can itself fail, producing the state the transaction made unreachable.
+
+The resolution is not a saga and not a deferral. **Pause and resume are two decisions wearing one
+function:** "kill the agent and its tmux pane" is `control`'s, and "move the task and mark its
+locks" belongs wholly inside the tasks+locks unit. Splitting them along that line leaves each
+transaction inside one deployment unit and leaves `control` holding only what needs the host.
+
+That split is a dated section on **028**, which owns `pause.ts` and `resume.ts`, and it is **the
+first work of this ticket, not a follow-up** — hence 028 joining the blocked-by list. It is also why
+this ticket's estimate should be treated as the softest of the eight.
 
 ## Scope
 
@@ -106,6 +133,13 @@ restarts, with the web app still up to show it.
 - [ ] `control` holds no browser-facing route.
 - [ ] Session start, message, interrupt, pause and resume behave identically across the boundary —
       008's and 028's existing tests pass against the RPC client.
+- [ ] **Pause and resume each still commit in ONE transaction, and it sits wholly inside the
+      tasks+locks unit** — no leg of it crosses the RPC boundary. Asserted by killing `control`
+      mid-pause: no task is left `paused` with unmarked locks, and no lock is left `paused` on a
+      task that never moved. This is the criterion the prerequisite exists for; if it cannot be met,
+      the split does not land.
+- [ ] A resumed task's lock TTL is restarted in the same commit as its transition, across the new
+      boundary — `resume.ts`'s stated reason, re-verified rather than assumed to survive the move.
 - [ ] A message at the tmux size limit still works across RPC: `maxMessageBytesFor(name)` is computed
       where tmux is, in `control`, not by the caller. (007's finding — the session name eats the
       payload — means a caller that computes this is computing it against the wrong name.)

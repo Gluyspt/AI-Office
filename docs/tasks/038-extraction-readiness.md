@@ -78,10 +78,15 @@ process is the microservices tax this whole design exists to avoid paying twice.
 - [ ] Module-level mutable state shared between two services fails, naming the module and both
       services. Asserted against a fixture, and against `bus.ts` as a known allowed case with its
       reason recorded.
-- [ ] `tasks` and `locks` are declared extractable-together, citing the crossings entry, and the test
-      fails if either is declared independently extractable while that entry exists.
+- [ ] `tasks` and `locks` are declared extractable-together, citing their crossings entries, and the
+      test fails if either is declared independently extractable while an entry exists.
 - [ ] `control` is declared host-only, and the test fails if any service declares a dependency *on*
       `control` that is not serialisable — because that is the edge 040 has to cross for real.
+- [ ] **`control`'s own two crossings are reported, not only dependencies *on* it.** `pause` and
+      `resume` each hold one transaction spanning control + tasks + locks (design §3.1, rows 3 and
+      4), so the graph must place `control` inside the transactional set until 028's split lands. A
+      graph showing `control` as cleanly extractable while those entries exist is the exact wrong
+      answer, and 040 is the ticket that would act on it.
 - [ ] `platform/*` is asserted to import nothing from `features/`, with 039's exception removed by
       the time this closes.
 - [ ] `scripts/service-graph.mjs` output is deterministic — same tree, same bytes — so the committed

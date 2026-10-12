@@ -113,7 +113,7 @@ the ownership map with the date it was added.
 | [037](037-handler-deadlines.md) | Handler deadlines: a hung handler must not stall ingest | B | dev | sonnet | 033 |
 | [038](038-extraction-readiness.md) | Extraction readiness: the service graph and its test | B | dev | opus | 033, 034 |
 | [039](039-identity-as-platform.md) | Identity as platform | B | dev | opus | 033 |
-| [040](040-control-service-split.md) | Control service: its own process, its own privilege | B | dev | opus | 034, 038, 039 |
+| [040](040-control-service-split.md) | Control service: its own process, its own privilege | B | dev | opus | 028, 034, 038, 039 |
 
 **By step:** 11 / 11 / 10 / 8 boundaries. **By department:** dev 34, research 3, qa 3.
 **By model:** opus 24, sonnet 16.
@@ -217,6 +217,7 @@ flowchart TD
     T034 --> T040[040 control split]
     T038 --> T040
     T039 --> T040
+    T028 --> T040
   end
 ```
 
@@ -379,7 +380,7 @@ Thirty-seven questions the design left open have been settled and written into t
 | **"Make everything microservices" is answered as contracted modules in ONE process.** Asked 2026-10-12. A process per feature costs ~650 MB of a 3.2 GB box — about two fewer desks, and desks are the product — adds a network hop to the PreToolUse guard, which blocks a live agent mid-tool-call, and turns `claim_task` into a saga. So a *service* is a module behind `features/*/contract.ts`, enforced by a test. This buys the whole of the agent-parallel-ownership driver and **none** of independent deploy, which is stated plainly rather than implied: that one needs a process, and 040 makes it once where it pays. | 033–040 |
 | **The DAS owns access; features own their SQL.** A data access service that owned every feature's queries would be the one global edit surface in a system whose coordination model is "declare your file scope and overlapping work is refused" — the ownership registry would refuse constantly and the office would serialise. So the DAS owns the pool, transaction scope, grants, lanes and timeouts; `tasks/repo.ts` and friends keep their own SQL. The data boundary must be a boundary, not a bottleneck. | 034 |
 | **Service grants are enforced by Postgres roles, not only by a lint.** One `NOLOGIN` role per service, real `GRANT`s, and `SET LOCAL ROLE` on checkout — `LOCAL`, so a pooled connection cannot leak one service's role into the next checkout. A CI check on declared tables is defeated by dynamic SQL and says nothing on the day a service connects from its own process; it is kept as the *error message*, not the enforcement. | 035 |
-| **`tasks` and `locks` are one deployment unit, and the transaction handle is the single legal boundary crossing.** `claim_task` hands one `PoolClient` across the two features inside one transaction, and 017's header records what breaks without it. So the two get separate contracts and separate grants but cannot become separate processes until a claim is a saga. Written into the boundary test as an enumerated exception list with one entry, which is only allowed to shrink. | 034, 038 |
+| **`tasks` and `locks` are one deployment unit — permanently — and there are FOUR transactional crossings, not one.** Asked directly 2026-10-12 and answered by counting rather than recalling: `claim_task` and `complete_task` span tasks + locks; **`pause` and `resume` span control + tasks + locks** (`pause.ts:856`, `resume.ts:482`, the latter commenting that clearing `paused` without restarting the lock TTL "hands the sweeper a live-but-expired lock"). Every one protects the same failure — a task and its file scope disagreeing about who owns what — and a saga needs a compensating action per transaction, any of which can fail and produce exactly that state. **The saga option is rejected, not deferred.** The count also found a hole in 040: `control` is inside the transactional set, so pause/resume must first be split along "kill the agent" vs "move the task and mark its locks" — 040 now blocked by 028. The hot path needs none of this: the guard holds no transaction at all, so the extractable seam inside `locks` is the guard's read path, not locks-versus-tasks. | 033, 034, 038, 040 |
 | **Platform may be called by everyone and calls nobody — so identity is platform.** `events`, `das`, `mcp` and `identity` are infrastructure, not services; requiring a contract to publish an event buys nothing. The rule fails exactly once against the tree: `mcp/protocol.ts` imports `session-auth.ts` out of the sudo-holding service, which would put a network hop into every MCP tool call once `control` is split. | 033, 039 |
 | **The pool is laned, and the guard gets a reservation.** A found defect, not a refactor: one pool with one `max` means a board query storm or a long `planning` transaction can hold every connection while the PreToolUse guard — a live agent on a ~2 s fail-open budget — waits for one. Two lanes (`hot` for guard and ingest, `general` for the rest), a reservation `general` can never consume, and an immediate refusal rather than a queue on the hot lane, because waiting 1.9 s to then fail open is strictly worse. | 036 |
 

@@ -35,7 +35,7 @@ This ticket writes the rule and makes it verifiable. It ships no behaviour chang
 - `packages/server/src/platform/README.md` — what `platform/` means, the one-way rule (platform may be called by everyone and calls nobody), and why `events`, `das`, `mcp` and `identity` live there rather than under `features/`
 - `tests/boundaries/contracts.test.ts` — the deep-import rule: a non-test file under `features/<a>/` may import from `features/<b>/` only via `features/<b>/contract.ts`
 - `tests/boundaries/declared-deps.test.ts` — every cross-service import target appears in the importing service's declared dependency list, and every declared dependency is actually used (an unused declaration is a stale boundary, not a harmless one)
-- `tests/boundaries/crossings.ts` — the **exception list**: the enumerated set of non-serialisable values allowed across a boundary, with the ticket that justifies each. Starts with one entry
+- `tests/boundaries/crossings.ts` — the **exception list**: the enumerated set of non-serialisable values allowed across a boundary, with the ticket that justifies each. Starts with **four** entries — see the inventory in §3.1 of the design
 - `tests/boundaries/README.md` — how to add a contract, what the three failures mean, and the rule that the exception list may only shrink
 
 ### Files modified
@@ -75,7 +75,7 @@ which is the exact failure the autoload conventions exist to avoid.
 - [ ] A `platform/` file importing from `features/` fails, with exactly one baselined exception (`mcp/protocol.ts`), and that exception names ticket 039.
 - [ ] A declared dependency that is never imported fails.
 - [ ] A cross-boundary function signature carrying a non-serialisable value (a `PoolClient`, a Fastify instance, a socket) fails unless the pair is on the crossings list.
-- [ ] The crossings list has exactly one entry on landing: `tasks → locks` for `claim_task`'s transaction handle, citing 017.
+- [ ] The crossings list has exactly **four** entries on landing, each citing its owning ticket: `claim_task` and `complete_task` (`tasks → locks`, 017), and `pause` and `resume` (`control → tasks, locks`, 028). Counting these rather than assuming `claim_task` was the only one is what answered the design's Q2 — a fifth appearing without a ticket is the failure this criterion exists to catch.
 - [ ] The whole suite still passes unchanged otherwise — 828 passed, 1 skipped, plus the new files.
 - [ ] `tests/boundaries/README.md` tells an agent what to do when each of the three tests fails, in the imperative, because the reader will usually be a model that just had its change refused.
 

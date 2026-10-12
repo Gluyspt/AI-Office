@@ -108,13 +108,48 @@ trip into the privileged process just to learn who was calling. **Identity is pl
 | S | `planning` | draft batches, promotion (019, not built) | cold | yes |
 | S | `permissions` | permission-request handling (027, not built) | cold | yes |
 
-¹ **`tasks` and `locks` are one deployment unit.** They share `claim_task`'s transaction, so they
-can be separate *services* with separate contracts and separate grants, but they cannot be separate
-*processes* until a claim becomes a saga. This is written down now rather than discovered later; see
-open question **Q2**.
+¹ **`tasks` and `locks` are one deployment unit — permanently.** Asked directly on 2026-10-12 and
+answered by counting, which found four transactions across the pair rather than the one `claim_task`
+this document first credited. See §3.1.
 
 `tasks/scope-ordering.ts → locks/overlap.ts` is the one edge that is not coupling at all —
 `overlap` is a pure function over two patterns. It belongs in `@office/shared` (**Q4**).
+
+### 3.1 The transactional crossings — four, not one
+
+"Do `tasks` and `locks` stay one deployment unit?" was asked on 2026-10-12. Counting the
+transactions rather than recalling them produced a firmer answer than the question expected, and a
+correction to §4 of this document: **`claim_task` is not the only transaction spanning two
+services. There are four, and two of them start in `control`.**
+
+| # | Transaction | Spans | What its atomicity prevents |
+| :-: | --- | --- | --- |
+| 1 | `claim_task` (`tasks/claim.ts`) | tasks + locks | A task `in_progress` that no agent is working on — invisible to every "what can I claim" query, so the work silently stops being available |
+| 2 | `complete_task` (`tasks/complete.ts:144`) | tasks + locks | A completed task still holding its file scope, blocking the next claim for a full TTL for a reason no log explains |
+| 3 | `pause` (`orchestrator/pause.ts:856`) | **control** + tasks + locks | A paused task whose locks were never marked `paused` — the sweeper then expires them and the files are taken while the work waits |
+| 4 | `resume` (`orchestrator/resume.ts:482`) | **control** + tasks + locks | `resume.ts`'s own comment: *"a paused lock's TTL has almost certainly expired while the work was paused, so clearing `paused` without restarting the clock hands the sweeper a live-but-expired lock and the task loses the files it was resumed to work on"* |
+
+Every one of those failure modes is a task and its file scope disagreeing about who owns what, which
+is the single thing the ownership registry exists to prevent. A saga would need a compensating
+action for each, and **a compensating action can itself fail** — producing precisely the states
+these four transactions make unreachable. So the saga option is **rejected, not deferred**: there is
+no scaling case for it (one box, ~6 desks, claims at human frequency), and the cost of being wrong
+is the failure the product is built to avoid.
+
+**The consequence for 040 is a real one and this document missed it.** Rows 3 and 4 mean `control`
+is inside the transactional set, so extracting `control` to its own process as written would break
+pause and resume. The fix is not a saga either: it is that **pause and resume are two decisions, not
+one** — "kill the agent and its tmux pane" belongs to `control`, "move the task and mark its locks"
+belongs to the tasks+locks unit. 040 therefore splits `pause.ts` / `resume.ts` along that line and
+calls the second half through a contract, which leaves one transaction wholly inside one deployment
+unit. Written up as a scope addition on 040 and a dated section on 028.
+
+**What the latency isolation people reach for a split to get comes from elsewhere.** The guard —
+the one genuinely hot path in `locks` — holds **no transaction at all**: `guard-check.ts` uses
+`query`, not `withTransaction`. So the extractable seam inside `locks` is not locks-versus-tasks, it
+is the guard's read path versus the registry's write path, which is also what 036's open question
+noticed from the other direction (the guard is hot; the sweeper and `listActive` are not). If the
+guard ever needs its own process, it can have one without any of this being renegotiated.
 
 ## 4. The contract convention
 
@@ -126,9 +161,11 @@ boundary a formality, and the ownership map needs one path per rule. Platform mo
 `contract.ts` on the same terms.
 
 **What may cross a boundary.** Serialisable values only — ids, records, refusals — with exactly one
-exception: **the DAS transaction handle**. That exception is enumerated in the boundary test, not
-implied, and the list is only allowed to shrink. Today it has one entry (`tasks` → `locks`, inside
-`claim_task`) and it is the formal statement of why those two ship together.
+kind of exception: **the DAS transaction handle**. Exceptions are enumerated in the boundary test,
+not implied, and the list is only allowed to shrink. It has **four** entries, inventoried in §3.1:
+`claim_task` and `complete_task` (tasks → locks), and `pause` and `resume` (control → tasks, locks).
+The list is the formal statement of which services ship together — and the last two are why 040
+has to split pause and resume before it can move `control` at all.
 
 **What this buys the office.** A contract is a stable edit surface. Two agents working in `tasks`
 and `locks` at the same time collide only if they both edit a contract — which the ownership
@@ -219,6 +256,13 @@ offer Resume"*. Splitting it buys least privilege and real crash isolation for t
 deserves both, at about +80 MB, and it is the split that cannot be deferred cheaply: every month of
 new code that calls into `control` in-process is another edge to unpick.
 
+It has a prerequisite this document did not see on the first pass, found by answering Q2: **pause
+and resume each hold one transaction spanning `control`, `tasks` and `locks`** (§3.1, rows 3 and 4),
+so `control` cannot move until that pair is split along the line between "kill the agent" and "move
+the task and mark its locks". That is a scope addition on 040, not a reason to defer it — but it is
+the part to do first, and it is why 040 is the one boundaries ticket whose estimate should be
+treated as soft.
+
 **`edge` (hook ingest + guard), not yet.** The case for a tiny always-up process owning the two hot
 endpoints is the 50 ms p95 and the guard's blocking budget. The case against is that it buys nothing
 the lanes in 036 do not, and costs a hop on the path it is meant to protect. Revisit if the p95
@@ -248,7 +292,8 @@ section carrying its own scope and criteria:
 | 015 | `locks/registry.ts` onto its grant; publish `acquireScope` as the contract | **high** — the `claim_task` transaction crosses here | 035 |
 | 017 | `claim.ts` / `complete.ts` call `locks` via contract, tx handle on the exception list | **high** — the two races of `1dffe19` | 035 |
 | 020 | guard onto the reserved lane | medium — it is the budgeted path | 036 |
-| 010, 028 | `chat` → `control` contract; pause/resume onto the `tasks` / `locks` contracts | medium | 038 |
+| 010 | `chat` → `control` contract | medium | 038 |
+| 028 | **split `pause.ts` / `resume.ts`** — the tmux half stays in `control`, the task-and-locks half moves behind a contract, so each transaction sits wholly inside one deployment unit | **high** — §3.1 rows 3 and 4 | **before** 040 |
 | 004 | delete `core/db/pool.ts` once nothing imports it | low — last, by definition | after 035 |
 
 Order is deliberate: the two high-risk rows (015, 017) land together, behind the 021 coordination
@@ -262,10 +307,11 @@ Not resolved by invention, per the repo's own rule.
   `db/migrate.ts` needs a separate migrator role and a credential the running server does not have.
   That is a real operational change to `.env.example` and `provision-host.sh`. *Leaning:* an
   `office_migrator` role, used only by `pnpm migrate`, never by the server. **Blocks 035.**
-- **Q2 — Do `tasks` and `locks` stay one deployment unit?** The alternative is `claim_task` as a
-  saga with compensation at step 7 (Reliability), which re-opens the races `1dffe19` closed.
-  *Leaning:* stay one unit; revisit only if `tasks` ever needs to scale alone, which on a 3.2 GB box
-  it will not. Blocks nothing; decide before any second split.
+- ~~**Q2 — Do `tasks` and `locks` stay one deployment unit?**~~ **Answered 2026-10-12: yes,
+  permanently.** Counting the transactions rather than recalling them found four across the pair,
+  two of them starting in `control`, and the saga alternative is now rejected rather than deferred.
+  Full reasoning and the inventory in §3.1 — including the consequence for 040, which this document
+  had missed.
 - **Q3 — Does `packages/web` get the same treatment?** It already has the overlay and file-route
   conventions, so a `features/<name>/contract.ts` rule is nearly free there and would give the UI
   the same agent-parallel property. *Leaning:* yes, as its own ticket after 033, not folded in.
@@ -284,7 +330,7 @@ Not resolved by invention, per the repo's own rule.
 | [037](tasks/037-handler-deadlines.md) | Handler deadlines: a hung handler must not stall ingest | 033 |
 | [038](tasks/038-extraction-readiness.md) | Extraction readiness: the service graph and its test | 033, 034 |
 | [039](tasks/039-identity-as-platform.md) | Identity as platform | 033 |
-| [040](tasks/040-control-service-split.md) | Control service: its own process, its own privilege | 034, 038, 039 |
+| [040](tasks/040-control-service-split.md) | Control service: its own process, its own privilege | **028**, 034, 038, 039 |
 
 **Critical path** (4 deep): 033 → 034 → 038 → 040.
 **Startable immediately:** 033. **Then in parallel:** 034, 037, 039.
