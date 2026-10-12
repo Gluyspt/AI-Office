@@ -20,6 +20,7 @@ The design says steps 1–3 carry the risk: if the chat bridge doesn't work, not
 | Numbered SQL files in `db/migrations/` | 004 | add a table without editing a schema file |
 | UI overlays collected by `import.meta.glob` from `src/features/*/overlay.tsx` | 022 | add a slide-in panel without editing the app shell |
 | File-based routes in `packages/web/src/routes/` | 022 | add a page without editing a route table |
+| MCP servers mounted by `mountMcpServer` from `features/mcp/protocol.ts` | 017 | add an MCP server as one route file, with no protocol code |
 
 **Layout: one folder per feature, plus `core/`.** The server is organised as vertical slices —
 `packages/server/src/features/<name>/` holds that feature's modules, its `routes/` and its
@@ -261,7 +262,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `packages/server/src/features/locks/routes/guard.ts`, `packages/server/src/features/locks/guard-check.ts`, `packages/server/src/features/locks/unguarded-edits.ts`, `packages/server/src/features/locks/handlers/tool.ts` | 020 |
 | `packages/server/src/features/permissions/handlers/permission.ts` | 027 |
 | `packages/server/src/features/orchestrator/pause.ts`, `resume.ts`, `packages/server/src/features/orchestrator/routes/control.ts` | 028 |
-| `packages/mcp-tasks/` (package.json, tsconfig.json, src/index.ts, src/office-client.ts, src/tools/claim-task.ts, src/tools/complete-task.ts) | 017 |
+| `packages/server/src/features/mcp/protocol.ts`, `packages/server/src/features/tasks/claim.ts`, `packages/server/src/features/tasks/complete.ts`, `packages/server/src/features/tasks/routes/actions.ts`, `packages/server/src/features/tasks/routes/mcp-tasks.ts` | 017 |
 | `packages/mcp-session/` (package.json, tsconfig.json, src/index.ts, src/office-client.ts, src/tools/start-session.ts, src/tools/message-session.ts) | 018 |
 | `packages/web/package.json`, `tsconfig.json`, `vite.config.ts`, `index.html`, `src/main.tsx`, `src/routes/__root.tsx`, `src/routes/index.tsx`, `src/lib/api.ts`, `src/lib/ws.ts`, `src/lib/overlays.tsx`, `src/lib/SystemStatus.tsx`, `src/styles/global.css` | 022 |
 | `packages/web/src/features/board/Board.tsx`, `Column.tsx`, `useBoard.ts`, `board.css` | 023 |
