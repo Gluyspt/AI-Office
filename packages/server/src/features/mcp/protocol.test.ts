@@ -27,7 +27,7 @@ import {
   killSession,
   startSession,
 } from "../orchestrator/sessions.ts";
-import { SESSION_TOKEN_ENV_VAR } from "../orchestrator/session-token.ts";
+import { SESSION_TOKEN_ENV_VAR } from "../../platform/identity/contract.ts";
 import type { TmuxAdapter } from "../orchestrator/tmux.ts";
 import { MCP_TASKS_PATH } from "../tasks/routes/mcp-tasks.ts";
 

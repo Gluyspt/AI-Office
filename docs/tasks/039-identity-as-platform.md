@@ -42,8 +42,12 @@ boundary rule is what makes it the wrong place now.
 - `packages/server/src/platform/identity/contract.ts` — `authenticateSessionToken`, `mintSessionToken`, `looksUnexpanded`, the `AuthenticatedDesk` type, and the `dependencies` export (empty — platform depends on platform)
 - `packages/server/src/platform/identity/token.ts` — minting, hashing, and the unexpanded-placeholder refusal
 - `packages/server/src/platform/identity/authenticate.ts` — token to desk, with validity derived from session status
-- `packages/server/src/platform/identity/token.test.ts`
-- `packages/server/src/platform/identity/authenticate.test.ts`
+- `packages/server/src/platform/identity/authenticate.test.ts` (moved from `session-auth.test.ts`)
+
+**`token.test.ts` was listed above and does not exist** — GLU-55 never wrote one. The token module's
+behaviour (shape checks, `looksUnexpanded`, hashing) is covered through `authenticate.test.ts` and
+`mcp/protocol.test.ts`. Listing a test file this ticket was never going to create was an error in
+the plan, not a gap in the work; splitting that coverage out is a tidy-up with no finding behind it.
 
 ### Files modified
 
@@ -77,25 +81,66 @@ which may split `platform_svc` for exactly this reason.
 changes. This ticket is a move plus a boundary, and anything else it changed would make the test
 that proves nothing broke much harder to trust.
 
+## Decided during implementation, 2026-10-13
+
+**A plain move was not possible, and the fix removed an edge nobody set out to fix.**
+`session-auth.ts` imported `SESSION_COLUMNS`, `sessionRowToRecord` and `SessionRow` from
+`orchestrator/sessions.ts`, so relocating it as-is would have put platform straight back to
+importing a feature — the exact rule this ticket exists to satisfy.
+
+Three options, and the third is the one that is actually right:
+
+| | Cost |
+| --- | --- |
+| Move the mapper into `platform/` too | Makes `control` depend on platform for **its own data shape**. Platform is infrastructure every service calls, not the home of one table's row type |
+| Have identity return a narrow desk type instead of a `SessionRecord` | Cleanest boundary, but it changes `ToolContext.session`, which is 017's file and pre-commits **018's** API before 018 exists — and breaks this ticket's own "no behaviour changes" criterion |
+| **Move the mapping to `@office/shared/sessions`** | Chosen. It is pure code with no owner, sitting beside the `SessionRecord` it maps to, in the package Q4 settled is for exactly that |
+
+**Three** services read the `sessions` table: `control` writes it, `identity` resolves tokens
+against it, and `chat` looks a desk up by its Claude session id. Leaving the mapper in any one of
+them forces the other two to import it across a boundary. Moving it to `shared` therefore removed a
+**`chat -> orchestrator`** baseline edge as well as both `mcp -> orchestrator` edges — 33 entries
+down to 30, where this ticket had predicted one deletion.
+
+**`sessionRowToRecord` casts the two ids rather than calling `asSessionId()` / `asProjectId()`.** Not
+a style regression: `packages/shared` emits declarations and has no `allowImportingTsExtensions`, so
+it can only *type*-import `./ids.ts` — a value import of those helpers is a `TS5097` there. The
+helpers are themselves pure casts (`ids.ts:34-35`), so the move is behaviour-identical, which is what
+let it claim nothing changed.
+
+**The baseline test guided its own retrofit.** After the move, the staleness check failed and named
+all three now-dead entries with the instruction to delete them. That is 033's mechanism doing the one
+job the design claimed for it, on its first real use — and it is why the baseline is asserted in both
+directions rather than only against growth.
+
 ## Acceptance criteria
 
-- [ ] Every test GLU-55 landed passes against the moved module, unchanged except for the import path.
-      If a test needs editing beyond its import, the move changed behaviour and that is a blocker.
-- [ ] `platform/identity` imports nothing from `features/`, asserted by 033's platform test.
-- [ ] `mcp/protocol.ts` no longer imports from `features/orchestrator/`, and 033's baseline entry for
-      it is **deleted** rather than left passing.
-- [ ] A token whose session has ended fails authentication, with validity derived from status and no
-      revocation column anywhere.
-- [ ] A credential still shaped like `${...}` is refused with its own reason naming the launch
+- [x] Every test GLU-55 landed passes against the moved module, unchanged except for the import path.
+      **Literally four changed lines, all imports** (`git diff` on `authenticate.test.ts`): two for the
+      renamed siblings, two for reaching `features/orchestrator/` from its new depth.
+- [x] `platform/identity` imports nothing from `features/`, asserted by 033's platform test. Its
+      production imports are now `node:crypto`, `@office/shared/sessions`, `core/db/pool.ts` and its
+      own `./token.ts`.
+- [x] `mcp/protocol.ts` no longer imports from `features/orchestrator/`, and **three** baseline
+      entries are deleted rather than left passing. It imports
+      `platform/identity/contract.ts` — the contract, not an internal, which 033's
+      platform-internals rule enforces.
+- [x] A token whose session has ended fails authentication, with validity derived from status and no
+      revocation column anywhere — GLU-55's own tests, unchanged.
+- [x] A credential still shaped like `${...}` is refused with its own reason naming the launch
       environment — `looksUnexpanded`, preserved exactly, including its message.
-- [ ] An unknown token, a well-formed token for a deleted session, and a token for a paused session
-      each get their own distinguishable outcome. (A paused desk is a live desk; this is the case most
-      likely to be got wrong by a move.)
-- [ ] `startSession` still mints, and the token still reaches the pane as `OFFICE_SESSION_TOKEN` —
-      asserted by 008's existing provisioning test, not a new one.
-- [ ] Authentication cost measured: it is on every MCP tool call, so the number belongs in the ticket.
-- [ ] **008 reopened** with a dated section for the move, and **017 reopened** for the
-      `mcp/protocol.ts` import. Both sections' criteria checked before this closes.
+- [x] An unknown token, a well-formed token for a deleted session, and a token for a paused session
+      each get their own distinguishable outcome — all covered by the moved tests.
+- [x] `startSession` still mints, and the token still reaches the pane as `OFFICE_SESSION_TOKEN` —
+      008's and 009's existing tests pass unchanged; `sessions.ts` and `provision.ts` now import
+      the contract.
+- [ ] Authentication cost measured. **Not done** — it is one indexed `sha-256` lookup and the move
+      changed no query, so a number taken now would measure the same code at a different import
+      path. It belongs with 035, which puts `SET LOCAL ROLE` in the checkout path and is the first
+      change that could plausibly move it.
+- [x] **008 reopened** (the move, plus the mapping relocation to `@office/shared`) and **017
+      reopened** (the `protocol.ts` import). **009 also reopened** — unplanned: `provision.ts`
+      imports `SESSION_TOKEN_ENV_VAR` and had to be repointed too.
 
 ## Open questions
 

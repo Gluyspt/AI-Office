@@ -43,7 +43,7 @@ import type { SessionRecord, SessionStatus } from "@office/shared/sessions";
 import { asProjectId, asSessionId, asTaskId, type ProjectId, type TaskId } from "@office/shared/ids";
 import { query, withTransaction } from "../../core/db/pool.ts";
 import { recordSystemEvent } from "../events/ingest.ts";
-import { SESSION_COLUMNS, sessionRowToRecord } from "../orchestrator/sessions.ts";
+import { SESSION_COLUMNS, sessionRowToRecord } from "@office/shared/sessions";
 
 // --- Row mapping ----------------------------------------------------------------
 //

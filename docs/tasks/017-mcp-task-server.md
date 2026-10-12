@@ -246,3 +246,18 @@ this endpoint for something to expose publicly.
       fact sourced to the task and **drops the column**. Written into the migration because it is a
       one-way door.
 - [ ] `approve_task`, `reject_task`, `deliver_task` remain out of scope — the QA gate is step 6.
+
+
+## Reopened 2026-10-13 — identity is platform (ticket 039)
+
+**Scope:** `features/mcp/protocol.ts`, two import lines.
+
+`protocol.ts` imported `authenticateSessionToken` and `bearerCredential` from
+`features/orchestrator/`. It now imports both from `platform/identity/contract.ts` — the contract,
+not an internal, which 033's platform-internals rule enforces. `ToolContext.session` is unchanged
+and still a `SessionRecord`: narrowing it was considered and rejected, because it would pre-commit
+018's API before 018 exists.
+
+- [x] `protocol.ts` imports identity through its contract; no behaviour change.
+- [x] `protocol.test.ts` repointed; all 41 tests across `platform/identity/` and `features/mcp/` pass.
+- [x] Three baseline entries deleted in `tests/boundaries/baseline.ts` (33 -> 30).

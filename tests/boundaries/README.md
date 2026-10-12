@@ -68,6 +68,20 @@ npx vitest run --project @office/boundaries-tests
 They touch no database and no network — every rule is a walk over the file tree — so they run in a
 couple of seconds and are safe to run in a loop while you work.
 
+## What these rules do NOT police
+
+**Test files.** `scan.ts` skips `*.test.ts`, deliberately: a test legitimately reaches across
+boundaries to build its fixtures. `platform/identity/authenticate.test.ts` imports
+`features/orchestrator/sessions.ts` to create a session row, and refusing that would mean
+reimplementing session creation inside a platform test.
+
+The cost is real and worth knowing: if `control` is ever extracted to its own process (040), a
+platform test that imports it breaks. 038's extractability check is the place that would catch it,
+because it reasons about what a service *needs*, not only about what imports what.
+
+**Runtime violations via dynamic `import()` with a computed path.** No code here does it, and 035's
+Postgres roles close the only crossing that would actually be dangerous.
+
 ## If you are changing these tests
 
 Every rule is tested twice: against the real tree, and against a scratch fixture that proves the

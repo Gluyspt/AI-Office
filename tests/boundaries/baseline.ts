@@ -19,9 +19,12 @@
 //
 // Each entry is `<importer> -> <imported>`, repo-relative with POSIX
 // separators so the string is identical on Windows and Linux.
+// 2026-10-13, ticket 039: three entries deleted. Identity moved to
+// platform/identity/, and the sessions-row mapping to @office/shared, which
+// removed both mcp -> orchestrator edges AND the chat -> orchestrator edge
+// that was only ever there for SESSION_COLUMNS and sessionRowToRecord. 33 -> 30.
 export const BASELINE: readonly string[] = [
   "packages/server/src/features/chat/conversations.ts -> packages/server/src/features/events/ingest.ts",
-  "packages/server/src/features/chat/conversations.ts -> packages/server/src/features/orchestrator/sessions.ts",
   "packages/server/src/features/chat/handlers/reply.ts -> packages/server/src/features/events/bus.ts",
   "packages/server/src/features/chat/handlers/reply.ts -> packages/server/src/features/events/handler-loader.ts",
   "packages/server/src/features/chat/handlers/reply.ts -> packages/server/src/features/events/ingest.ts",
@@ -32,8 +35,6 @@ export const BASELINE: readonly string[] = [
   "packages/server/src/features/locks/handlers/tool.ts -> packages/server/src/features/events/handler-loader.ts",
   "packages/server/src/features/locks/registry.ts -> packages/server/src/features/events/ingest.ts",
   "packages/server/src/features/locks/unguarded-edits.ts -> packages/server/src/features/events/ingest.ts",
-  "packages/server/src/features/mcp/protocol.ts -> packages/server/src/features/orchestrator/session-auth.ts",
-  "packages/server/src/features/mcp/protocol.ts -> packages/server/src/features/orchestrator/session-token.ts",
   "packages/server/src/features/orchestrator/handlers/session-end.ts -> packages/server/src/features/events/handler-loader.ts",
   "packages/server/src/features/orchestrator/handlers/session-start.ts -> packages/server/src/features/events/handler-loader.ts",
   "packages/server/src/features/orchestrator/pause.ts -> packages/server/src/features/events/ingest.ts",

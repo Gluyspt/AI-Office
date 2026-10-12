@@ -261,3 +261,31 @@ task's owner, and keeping the two apart is what lets 017's refusals name the con
 saying "denied". The MCP endpoints must map the five refusal kinds onto `isError: true` tool results
 with the message text intact (spike 003 §4), not onto a bare 401 — a desk that reads "unauthorized"
 retries forever.
+
+
+## Reopened 2026-10-13 — identity moves to platform (ticket 039)
+
+**Scope:** `features/orchestrator/session-token.ts` and `session-auth.ts` (moved out),
+`features/orchestrator/sessions.ts` (its mint import, and the row-mapping block removed),
+`packages/shared/src/sessions.ts` (the row mapping moved in).
+
+039 needed `authenticateSessionToken` to be platform, because `features/mcp/protocol.ts` — the RPC
+framework every MCP server builds on — was importing it out of the service that holds the `sudo`
+grant. Once 040 moves `control` to its own process, that import becomes a network round trip into
+the privileged process on every MCP tool call, to answer one indexed `sha-256` lookup.
+
+**The part that was not a move.** `session-auth.ts` imported `SESSION_COLUMNS`,
+`sessionRowToRecord` and `SessionRow` from this ticket's `sessions.ts`, so relocating it as-is would
+have put platform back to importing a feature. Those — plus the `failure_reason` codec, now
+`splitSessionFailure` / `joinSessionFailure` — moved to `@office/shared/sessions`, beside the
+`SessionRecord` they map to. Three services read the `sessions` table (`control` writes it,
+`identity` resolves tokens against it, `chat` looks a desk up by its Claude session id), so leaving
+the mapper in any one of them forces the other two across a boundary.
+
+- [x] `session-token.ts` -> `platform/identity/token.ts`, `session-auth.ts` -> `platform/identity/authenticate.ts`.
+- [x] `sessions.ts` imports the mint through `platform/identity/contract.ts`.
+- [x] The row mapping lives in `@office/shared/sessions` and is behaviour-identical — the two id
+      casts replace `asSessionId()` / `asProjectId()`, which are themselves pure casts, because the
+      shared package emits declarations and can only type-import `./ids.ts`.
+- [x] Every GLU-55 test passes with only its import lines changed (four of them).
+- [x] `startSession` still mints and the pane still receives `OFFICE_SESSION_TOKEN`.

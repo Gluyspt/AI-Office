@@ -46,14 +46,18 @@
 // start_session while paused" check is stubbed, naming ticket 028.
 import type { PoolClient } from "pg";
 import {
+  SESSION_COLUMNS,
+  SESSION_STATUSES,
+  isTerminalSessionStatus,
+  joinSessionFailure,
+  sessionRowToRecord,
   type QueuedMessage,
   type SessionBackend,
   type SessionFailureKind,
   type SessionRecord,
   type SessionRole,
+  type SessionRow,
   type SessionStatus,
-  SESSION_STATUSES,
-  isTerminalSessionStatus,
 } from "@office/shared/sessions";
 import { asProjectId, asSessionId, type ProjectId, type SessionId } from "@office/shared/ids";
 import { loadSessionsConfig } from "../../core/config.ts";
@@ -64,7 +68,7 @@ import {
   SESSION_TOKEN_ENV_VAR,
   mintSessionToken,
   type MintedSessionToken,
-} from "./session-token.ts";
+} from "../../platform/identity/contract.ts";
 import { getTmuxAdapter, type TmuxAdapter } from "./tmux.ts";
 
 // --- The transition table -------------------------------------------------------
@@ -157,90 +161,12 @@ export class IllegalSessionTransitionError extends SessionError {
 // --- Row mapping ----------------------------------------------------------------
 //
 // TIMESTAMP TRAP, the fifth sighting in this repo. `timestamptz` -> JS
-// `Date` loses microseconds, so any timestamp that must *match* a stored
-// value cannot round-trip through a Date. These columns are read as TEXT
-// and kept as strings all the way to the client. The same comment appears
-// in states.ts, events/ingest.ts and tasks/repo.ts.
-export const SESSION_COLUMNS = `
-  id,
-  project_id,
-  tmux_name,
-  role,
-  dept,
-  owner,
-  backend,
-  model,
-  model_reason,
-  status,
-  claude_session_id,
-  failure_reason,
-  started_at::text as started_at,
-  ended_at::text as ended_at
-`;
-
-/**
- * Exported for ./session-auth.ts, which maps a row it selected by
- * `token_hash` (a column SESSION_COLUMNS deliberately omits) through
- * `sessionRowToRecord` rather than keeping a second mapping in step with
- * this one.
- */
-export interface SessionRow {
-  id: string;
-  project_id: string;
-  tmux_name: string;
-  role: string;
-  dept: string;
-  owner: string;
-  backend: string;
-  model: string;
-  model_reason: string;
-  status: string;
-  claude_session_id: string | null;
-  failure_reason: string | null;
-  started_at: string;
-  ended_at: string | null;
-}
-
-/**
- * `failure_reason` stores "kind: detail" so the two halves the ticket wants
- * separated survive one column. One column rather than two because the kind
- * is never queried on — it is read by a human and switched on by the UI,
- * both of which get it from the parsed record.
- */
-function splitFailure(raw: string | null): {
-  kind: SessionFailureKind | null;
-  reason: string | null;
-} {
-  if (raw === null) return { kind: null, reason: null };
-  const at = raw.indexOf(": ");
-  if (at <= 0) return { kind: "other", reason: raw };
-  return { kind: raw.slice(0, at) as SessionFailureKind, reason: raw.slice(at + 2) };
-}
-
-function joinFailure(kind: SessionFailureKind, reason: string): string {
-  return `${kind}: ${reason}`;
-}
-
-export function sessionRowToRecord(row: SessionRow): SessionRecord {
-  const failure = splitFailure(row.failure_reason);
-  return {
-    id: asSessionId(row.id),
-    projectId: asProjectId(row.project_id),
-    tmuxName: row.tmux_name,
-    role: row.role as SessionRole,
-    dept: row.dept,
-    owner: row.owner,
-    backend: row.backend as SessionBackend,
-    model: row.model,
-    modelReason: row.model_reason,
-    status: row.status as SessionStatus,
-    claudeSessionId: row.claude_session_id,
-    failureKind: failure.kind,
-    failureReason: failure.reason,
-    startedAt: row.started_at,
-    endedAt: row.ended_at,
-  };
-}
+// The sessions table's row shape, SESSION_COLUMNS, sessionRowToRecord and the
+// failure-column codec moved to `@office/shared/sessions` on 2026-10-13 — a
+// dated section on this ticket, so that ticket 039 could move identity into
+// `platform/` without platform importing a feature. They are pure mapping
+// code that three services read (control, identity, chat); see the comment
+// beside them in the shared package for why that is the right home.
 
 // --- Injectable dependencies ----------------------------------------------------
 //
@@ -387,7 +313,7 @@ async function applyTransition(
       to,
       terminal,
       extra.claudeSessionId ?? null,
-      extra.failure ? joinFailure(extra.failure.kind, extra.failure.reason) : null,
+      extra.failure ? joinSessionFailure(extra.failure.kind, extra.failure.reason) : null,
     ],
   );
   return sessionRowToRecord(updated.rows[0] as SessionRow);

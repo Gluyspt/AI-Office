@@ -14,14 +14,14 @@
 import { timingSafeEqual } from "node:crypto";
 import type { SessionRecord } from "@office/shared/sessions";
 import { query } from "../../core/db/pool.ts";
-import { SESSION_COLUMNS, sessionRowToRecord, type SessionRow } from "./sessions.ts";
+import { SESSION_COLUMNS, sessionRowToRecord, type SessionRow } from "@office/shared/sessions";
 import {
   SESSION_TOKEN_ENV_VAR,
   describeSessionTokenShape,
   isSessionTokenShape,
   looksUnexpanded,
   sessionTokenHash,
-} from "./session-token.ts";
+} from "./token.ts";
 
 export type SessionAuthFailureKind =
   /** No `Authorization: Bearer …` at all. */

@@ -72,8 +72,12 @@
 // cannot. That is worth more than refusing the handshake one step earlier.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { SessionRecord } from "@office/shared/sessions";
-import { authenticateSessionToken } from "../orchestrator/session-auth.ts";
-import { bearerCredential } from "../orchestrator/session-token.ts";
+// Identity is platform as of ticket 039 — imported through its contract,
+// which is the only entry point a platform module exposes once it has one.
+import {
+  authenticateSessionToken,
+  bearerCredential,
+} from "../../platform/identity/contract.ts";
 
 /** Read off the SDK's `types.js`, newest first. */
 export const SUPPORTED_PROTOCOL_VERSIONS = [

@@ -21,7 +21,7 @@ import type { SessionRecord } from "@office/shared/sessions";
 import type { ProjectId } from "@office/shared/ids";
 import { pool } from "../../../core/db/pool.ts";
 import { ingestHookPayload } from "../../events/ingest.ts";
-import { SESSION_COLUMNS, sessionRowToRecord } from "../../orchestrator/sessions.ts";
+import { SESSION_COLUMNS, sessionRowToRecord } from "@office/shared/sessions";
 import {
   conversationSubjectForSession,
   findConversationBySubject,

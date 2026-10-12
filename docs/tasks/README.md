@@ -353,7 +353,8 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `features/events/ingest.ts` dispatch wiring, `handler-loader.ts`’s `LoadedHandler.source`, `ingest.test.ts`’s 037 tests | 005 (dated section 2026-10-13) |
 | `tests/boundaries/extractable.test.ts`, `shared-state.ts`, `scripts/service-graph.mjs`, `docs/service-graph.md` | 038 |
 | `tests/boundaries/web-contracts.test.ts`, `packages/web/src/features/README.md` | 041 |
-| `packages/server/src/platform/identity/contract.ts`, `token.ts`, `authenticate.ts` (+ tests) | 039 |
+| `packages/server/src/platform/identity/contract.ts`, `token.ts`, `authenticate.ts`, `authenticate.test.ts` | 039 (moved 2026-10-13 from 008's `session-token.ts` / `session-auth.ts`) |
+| `packages/shared/src/sessions.ts` — `SESSION_COLUMNS`, `SessionRow`, `sessionRowToRecord`, the failure codec | 008 (moved there 2026-10-13 for 039; pure mapping three services read) |
 | `packages/control/` (package.json, tsconfig.json, src/index.ts, src/rpc-server.ts, src/health.ts), `packages/server/src/platform/rpc/contract.ts`, `client.ts`, `server.ts`, `deploy/host/office-control.service`, `docs/runbooks/control-service.md` | 040 |
 | `docs/service-boundaries-design.md` | — (design, unowned, like `docs/ai-agent-office-design.md`) |
 

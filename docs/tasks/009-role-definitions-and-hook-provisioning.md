@@ -382,3 +382,15 @@ split safe: it is the thing that would catch the spelling drifting apart.
   `loadXConfig()` section, so 018 (and later a graph server per project) can add one without
   reopening this ticket each time. Flagged for a human; the cost of getting it wrong either way is
   small.
+
+
+## Reopened 2026-10-13 — identity is platform (ticket 039)
+
+**Scope:** `features/orchestrator/provision.ts`, one import line.
+
+Unplanned: 039 expected to touch 008 and 017 only, but `provision.ts` imports
+`SESSION_TOKEN_ENV_VAR` to build the launch environment, so it had to be repointed at
+`platform/identity/contract.ts` too. No behaviour change — the constant is the same constant.
+
+- [x] `provision.ts` imports `SESSION_TOKEN_ENV_VAR` through the identity contract.
+- [x] This ticket's provisioning tests pass unchanged.

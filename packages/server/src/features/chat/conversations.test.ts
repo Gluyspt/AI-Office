@@ -17,7 +17,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import type { SessionRecord, SessionRole, SessionStatus } from "@office/shared/sessions";
 import { asTaskId, type ProjectId } from "@office/shared/ids";
 import { pool } from "../../core/db/pool.ts";
-import { SESSION_COLUMNS, sessionRowToRecord } from "../orchestrator/sessions.ts";
+import { SESSION_COLUMNS, sessionRowToRecord } from "@office/shared/sessions";
 import {
   closeSegment,
   conversationSubjectForSession,

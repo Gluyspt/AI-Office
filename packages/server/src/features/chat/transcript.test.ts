@@ -23,7 +23,7 @@ import type { ProjectId } from "@office/shared/ids";
 import { pool } from "../../core/db/pool.ts";
 import { subscribe } from "../events/bus.ts";
 import type { StoredEventRow } from "../events/ingest.ts";
-import { SESSION_COLUMNS, sessionRowToRecord } from "../orchestrator/sessions.ts";
+import { SESSION_COLUMNS, sessionRowToRecord } from "@office/shared/sessions";
 import { conversationSubjectForSession, openOrResumeSegment, resolveConversation } from "./conversations.ts";
 import {
   TranscriptCursorError,

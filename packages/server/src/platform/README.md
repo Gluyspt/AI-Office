@@ -40,27 +40,34 @@ test rather than a convention anyone has to remember.
 | --- | --- | --- |
 | `das/` | The connection pool, transaction scope, per-service grants, lanes and statement timeouts | 034, 035, 036 |
 | `events/` | Hook ingest, the bus, handler dispatch and per-handler deadlines | 037, then 005's retrofit |
-| `identity/` | Minting and resolving a desk's per-session token | 039 |
+| `identity/` | Minting and resolving a desk's per-session token | 039 — **landed 2026-10-13** |
 | `mcp/` | JSON-RPC mounting for the MCP servers | 017's retrofit |
 | `rpc/` | The loopback transport, once one service runs in its own process | 040 |
 
-Only this README exists today. Each module arrives with its ticket, and the three that move here
-from `features/` do so as dated sections on the tickets that own those files — not as a sweep.
+`das/` and `identity/` exist. Each remaining module arrives with its ticket, and the ones that move
+here from `features/` do so as dated sections on the tickets that own those files — not as a sweep.
 
-## The one violation of the rule, and why it is not here yet
+## The violation that motivated this — fixed 2026-10-13
 
-`features/mcp/protocol.ts` imports `features/orchestrator/session-auth.ts`: the RPC framework
+`features/mcp/protocol.ts` imported `features/orchestrator/session-auth.ts`: the RPC framework
 reaching into the service that holds the `sudo` grant, to answer a question every service asks —
 which desk is calling.
 
-It is **not** a platform violation today, because `mcp` still lives under `features/`. It is an
-ordinary baselined cross-feature edge. It becomes a platform violation the moment 039 moves identity
-and mcp here, which is the point at which the platform test starts doing real work.
+Ticket 039 moved identity here, and the import now goes through
+`platform/identity/contract.ts`. The cost of having left it would have been specific: once 040
+moves `control` to its own process, every MCP tool call — every `claim_task`, every
+`complete_task` — would have needed a network round trip into the privileged process before it
+could learn who was asking, to answer one indexed `sha-256` lookup.
 
-The cost of leaving it is specific: once 040 moves `control` to its own process, every MCP tool call
-— every `claim_task`, every `complete_task` — would need a network round trip into the privileged
-process before it could learn who was asking, to answer one indexed `sha-256` lookup. That is why
-**identity is platform**.
+**The move needed more than a move.** `session-auth.ts` imported `SESSION_COLUMNS`,
+`sessionRowToRecord` and `SessionRow` from `orchestrator/sessions.ts`, so relocating it as-is would
+have put platform straight back to importing a feature. Those three (plus the `failure_reason`
+codec) are pure mapping code between one table's columns and a record type already declared in
+`@office/shared/sessions`, and **three** services read that table — `control` writes it, `identity`
+resolves tokens against it, `chat` looks a desk up by its Claude session id. Leaving the mapper in
+any one of them makes the other two import it across a boundary; putting it *here* would make
+`control` depend on platform for its own data shape. It moved to the shared package, beside the type
+it maps to. That also removed a `chat -> orchestrator` edge nobody had set out to fix.
 
 ## Adding a module here
 

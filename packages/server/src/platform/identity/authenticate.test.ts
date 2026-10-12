@@ -10,21 +10,21 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { ProjectId } from "@office/shared/ids";
 import { pool } from "../../core/db/pool.ts";
-import { authenticateSessionToken } from "./session-auth.ts";
+import { authenticateSessionToken } from "./authenticate.ts";
 import {
   SESSION_TOKEN_ENV_VAR,
   bearerCredential,
   looksUnexpanded,
   mintSessionToken,
   sessionTokenHash,
-} from "./session-token.ts";
+} from "./token.ts";
 import {
   __resetSessionsDeps,
   __setSessionsDeps,
   killSession,
   startSession,
-} from "./sessions.ts";
-import type { TmuxAdapter } from "./tmux.ts";
+} from "../../features/orchestrator/sessions.ts";
+import type { TmuxAdapter } from "../../features/orchestrator/tmux.ts";
 
 const createdProjects: string[] = [];
 const slugOf = new Map<string, string>();

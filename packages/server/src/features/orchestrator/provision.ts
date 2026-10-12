@@ -94,7 +94,7 @@ import { X509Certificate } from "node:crypto";
 import { chmod, chown, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import nodePath from "node:path";
 import { fileURLToPath } from "node:url";
-import { SESSION_TOKEN_ENV_VAR } from "./session-token.ts";
+import { SESSION_TOKEN_ENV_VAR } from "../../platform/identity/contract.ts";
 
 /** Target-side paths are always POSIX: the host is Linux, the tests are not. */
 const posix = nodePath.posix;
