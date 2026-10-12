@@ -735,3 +735,53 @@ export function loadGuardConfig(env: NodeJS.ProcessEnv = process.env): GuardConf
   finish(reader);
   return { checkTimeoutMs, flushMaxEdits };
 }
+
+// --- Ticket 037: handler deadlines ------------------------------------------
+//
+// Appended under the manifest exception ("a later ticket may append a
+// loadXConfig()"). 004 owns this file; this section is 037's.
+
+export interface HandlerDeadlineConfig {
+  /**
+   * How long dispatch waits for one handler before moving on.
+   *
+   * NOT DERIVED FROM THE INGEST BUDGET, and 037's own ticket said it should
+   * be — the correction is in that ticket's "Decided during implementation".
+   * The short version: the 50 ms figure is a **p95** and a deadline is a
+   * **worst case**, which are different statistics. A deadline multiplied by
+   * the handler count will always exceed a p95 budget, so the check 037
+   * originally specified ("boot refuses a configuration whose worst case
+   * exceeds the budget") would refuse every configuration generous enough to
+   * not abandon healthy handlers.
+   *
+   * What a deadline is actually for is bounding a HANG — turning "forever"
+   * into "two seconds" — so it is set well above what any healthy handler
+   * takes. The honest link to the budget is measurement, not arithmetic:
+   * `platform/events/slow-handlers.ts` records per-handler durations, and
+   * `overBudget()` names the handlers whose mean run is eating the budget.
+   */
+  readonly deadlineMs: number;
+  /**
+   * The ingest p95 budget, used only for that reporting — never to validate
+   * the deadline. Matches the figure 005's timing test asserts.
+   */
+  readonly ingestBudgetMs: number;
+}
+
+const DEFAULT_HANDLER_DEADLINE_MS = 2_000;
+const DEFAULT_EVENT_INGEST_BUDGET_MS = 50;
+
+export function loadHandlerDeadlineConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): HandlerDeadlineConfig {
+  const reader: Reader = { env, problems: [] };
+  const deadlineMs = optionalInt(reader, "HANDLER_DEADLINE_MS", DEFAULT_HANDLER_DEADLINE_MS, 1);
+  const ingestBudgetMs = optionalInt(
+    reader,
+    "EVENT_INGEST_BUDGET_MS",
+    DEFAULT_EVENT_INGEST_BUDGET_MS,
+    1,
+  );
+  finish(reader);
+  return { deadlineMs, ingestBudgetMs };
+}

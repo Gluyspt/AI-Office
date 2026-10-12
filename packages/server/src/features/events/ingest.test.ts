@@ -173,6 +173,19 @@ async function cleanupBySessionId(sessionId: string): Promise<void> {
   await pool.query("delete from events where session_id = $1", [sessionId]);
 }
 
+/**
+ * Added 2026-10-13 for ticket 037's dated section.
+ *
+ * `HandlerDeadlineExceeded` is recorded by `recordSystemEvent`, which leaves
+ * `session_id` null — so `cleanupBySessionId` cannot reach it, and a test
+ * that leaves one behind makes the NEXT run of its own assertion pass against
+ * a stale row. The suite shares one database (see vitest.config.ts), so
+ * leftover rows are everyone's problem, not just this file's.
+ */
+async function cleanupByType(type: string): Promise<void> {
+  await pool.query("delete from events where type = $1", [type]);
+}
+
 describe("validateHookBody", () => {
   it("accepts a well-formed hook payload and extracts hook_event_name + session_id", () => {
     const result = validateHookBody(JSON.stringify(CAPTURED_PAYLOADS.Stop));
@@ -420,6 +433,13 @@ describe("listEvents", () => {
 
 describe("handler autoload extension point", () => {
   const tempHandlerPath = path.join(handlersDir, "__temp_extension_point_test_handler__.ts");
+  // One path per test, because Node's ESM loader caches a module by URL —
+  // handler-loader.ts says so in its header, and writing different content to
+  // a path already imported in this process is a cache hit, not a
+  // re-execution. Sharing one filename makes the second test silently run the
+  // FIRST test's handler. Found the hard way, 2026-10-13.
+  const hangingHandlerPath = path.join(handlersDir, "__temp_hanging_handler__.ts");
+  const hangingHandlerPath2 = path.join(handlersDir, "__temp_hanging_handler_2__.ts");
 
   beforeAll(() => {
     (globalThis as Record<string, unknown>).__extensionPointCalls = [];
@@ -451,4 +471,115 @@ export default {
 
     await cleanupBySessionId(sessionId);
   });
+
+  // --- Ticket 037's dated section ------------------------------------------
+  //
+  // The end-to-end half of the handler deadline. deadline.test.ts proves the
+  // mechanism bounds a hang; these prove INGEST actually uses it, which is a
+  // different claim and the one that matters — a correct mechanism nobody
+  // wired in is the failure this ticket was written about.
+  //
+  // Both plant a real handler file the same way the test above does, because
+  // `dispatch` reads the real features tree. That is also why they clean up
+  // in `afterEach` whatever happens.
+
+  it("does not stall the POST on a handler that never settles — 037", async () => {
+    const moduleSource = `
+export default {
+  eventType: "TempHangingHandlerEvent",
+  handle() {
+    globalThis.__hangingHandlerRan = true;
+    return new Promise(() => {});
+  },
+};
+`;
+    await mkdir(handlersDir, { recursive: true });
+    await writeFile(hangingHandlerPath, moduleSource, "utf8");
+    (globalThis as Record<string, unknown>).__hangingHandlerRan = false;
+
+    // A short deadline for the test, restored in `finally`. Two reasons, and
+    // the second is the one that bit: it also asserts the config is actually
+    // read (a hard-coded 2 s would pass either way), AND it keeps this test
+    // from adding two idle seconds to a suite that already has timing
+    // assertions running on thin margins — waiting out the real default here
+    // tipped packages/web's "renders 200 cards in under 200 ms" over.
+    const previous = process.env.HANDLER_DEADLINE_MS;
+    process.env.HANDLER_DEADLINE_MS = "50";
+    try {
+
+    const sessionId = randomUUID();
+    const started = Date.now();
+    const stored = await ingestHookPayload(
+      JSON.stringify({ hook_event_name: "TempHangingHandlerEvent", session_id: sessionId }),
+    );
+    const elapsed = Date.now() - started;
+
+    // It ran, it never finished, and the POST came back anyway. Before 037
+    // this call did not return at all.
+    expect((globalThis as Record<string, unknown>).__hangingHandlerRan).toBe(true);
+    expect(stored.id).toBeTruthy();
+    // HANDLER_DEADLINE_MS defaults to 2 s; allow generous slack so this is
+    // not a timing flake. What it rules out is "unbounded".
+    expect(elapsed).toBeLessThan(5_000);
+
+    await cleanupBySessionId(sessionId);
+    await cleanupByType("HandlerDeadlineExceeded");
+    } finally {
+      if (previous === undefined) delete process.env.HANDLER_DEADLINE_MS;
+      else process.env.HANDLER_DEADLINE_MS = previous;
+    }
+  }, 30_000);
+
+  it("records a HandlerDeadlineExceeded event naming the handler file — 037", async () => {
+    const moduleSource = `
+export default {
+  eventType: "TempHangingHandlerEvent2",
+  handle() {
+    return new Promise(() => {});
+  },
+};
+`;
+    await mkdir(handlersDir, { recursive: true });
+    await writeFile(hangingHandlerPath2, moduleSource, "utf8");
+
+    const previous = process.env.HANDLER_DEADLINE_MS;
+    process.env.HANDLER_DEADLINE_MS = "50";
+    try {
+    const sessionId = randomUUID();
+    await ingestHookPayload(
+      JSON.stringify({ hook_event_name: "TempHangingHandlerEvent2", session_id: sessionId }),
+    );
+
+    // The event is emitted un-awaited on purpose — awaiting a persist inside
+    // the dispatch loop would put a database round trip on the hot path at
+    // the moment it is already late — so poll for it rather than assuming it
+    // has landed.
+    let recorded: StoredEventRow | undefined;
+    for (let attempt = 0; attempt < 40 && recorded === undefined; attempt += 1) {
+      const events = await listEvents({ projectId: null, since: null, limit: 50 });
+      // Matched on the PAYLOAD, not just the type: the test above also
+      // leaves a HandlerDeadlineExceeded behind, and finding that one would
+      // make this assertion pass while proving nothing about this handler.
+      recorded = events.find(
+        (e) =>
+          e.type === "HandlerDeadlineExceeded"
+          && (e.payload as { event_type?: string }).event_type === "TempHangingHandlerEvent2",
+      );
+      if (recorded === undefined) await new Promise((r) => setTimeout(r, 100));
+    }
+
+    expect(recorded, "no HandlerDeadlineExceeded event was recorded").toBeDefined();
+    const payload = recorded!.payload as { handler: string; event_type: string };
+    // The file, not just the event type: three features register handlers for
+    // the same types, so "a handler for PreToolUse" is not actionable.
+    expect(payload.handler).toContain("__temp_handler_extension_feature__");
+    expect(payload.event_type).toBe("TempHangingHandlerEvent2");
+
+    await cleanupBySessionId(sessionId);
+    await cleanupByType("HandlerDeadlineExceeded");
+    } finally {
+      if (previous === undefined) delete process.env.HANDLER_DEADLINE_MS;
+      else process.env.HANDLER_DEADLINE_MS = previous;
+    }
+  }, 30_000);
 });

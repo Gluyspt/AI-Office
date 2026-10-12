@@ -18,7 +18,12 @@
 //     PostToolUse.tool_response can carry whole file bodies — no truncation.
 import { EventEmitter } from "node:events";
 import { query } from "../../core/db/pool.ts";
+import { loadHandlerDeadlineConfig } from "../../core/config.ts";
 import { loadHandlers, type HandledEvent } from "./handler-loader.ts";
+// Ticket 037's dated section on 005. Platform, so importable directly — but
+// only through its contract once it publishes one; see platform/README.md.
+import { runWithDeadline } from "../../platform/events/deadline.ts";
+import { recordOutcome } from "../../platform/events/slow-handlers.ts";
 
 // --- Validation --------------------------------------------------------------
 
@@ -206,9 +211,24 @@ async function dispatch(event: StoredEventRow): Promise<void> {
     return;
   }
   const handled = toHandledEvent(event);
+  const { deadlineMs } = loadHandlerDeadlineConfig();
+
   for (const handler of handlers) {
     try {
-      await handler.handle(handled);
+      // Ticket 037's dated section. The try/catch below still owns a handler
+      // that THROWS — that was never the gap. What `runWithDeadline` adds is
+      // the case a try/catch cannot see: a handler that never settles,
+      // stalling every handler behind it and the ingest POST itself, which is
+      // what a blocking hook is waiting on.
+      await runWithDeadline(() => handler.handle(handled), {
+        label: handler.source,
+        eventType: event.type,
+        deadlineMs,
+        onOutcome: (outcome) => {
+          recordOutcome(outcome);
+          if (outcome.state === "exceeded") reportDeadlineExceeded(outcome);
+        },
+      });
     } catch (error) {
       // A handler bug must not fail the HTTP response ingest already sent
       // 2xx for (persist+publish happen first) or take down dispatch for
@@ -216,6 +236,53 @@ async function dispatch(event: StoredEventRow): Promise<void> {
       console.error(`event handler for type ${event.type} threw`, error);
     }
   }
+}
+
+/** The type the office emits when dispatch gives up on a handler. */
+const HANDLER_DEADLINE_EXCEEDED = "HandlerDeadlineExceeded";
+
+/**
+ * Records an exceeded deadline as an event, so a handler that silently
+ * stopped running is visible where every other degradation is rather than in
+ * a log nobody reads.
+ *
+ * TWO THINGS THIS DELIBERATELY DOES NOT DO.
+ *
+ * It is not awaited. `recordSystemEvent` runs the whole pipeline — persist,
+ * publish, dispatch — and awaiting that inside the dispatch loop would put a
+ * database round trip on the hot path at the exact moment the hot path is
+ * already late. Same shape as `installTlsErrorLogging` in server.ts.
+ *
+ * It does not emit for its own event type. `recordSystemEvent` dispatches,
+ * so a handler registered for `HandlerDeadlineExceeded` that itself hung
+ * would emit another, and another. One level of nesting is useful; unbounded
+ * recursion on the ingest path is a way to take the server down with a
+ * diagnostic.
+ */
+function reportDeadlineExceeded(outcome: {
+  readonly label: string;
+  readonly eventType: string;
+  readonly deadlineMs: number;
+}): void {
+  if (outcome.eventType === HANDLER_DEADLINE_EXCEEDED) {
+    console.error(
+      `HANDLER_DEADLINE_EXCEEDED handler=${outcome.label} type=${outcome.eventType} deadlineMs=${outcome.deadlineMs} (not re-emitted: would recurse)`,
+    );
+    return;
+  }
+
+  console.error(
+    `HANDLER_DEADLINE_EXCEEDED handler=${outcome.label} type=${outcome.eventType} deadlineMs=${outcome.deadlineMs}`,
+  );
+
+  recordSystemEvent(HANDLER_DEADLINE_EXCEEDED, {
+    handler: outcome.label,
+    event_type: outcome.eventType,
+    deadline_ms: outcome.deadlineMs,
+    at: new Date().toISOString(),
+  }).catch((error: unknown) => {
+    console.error("failed to record HandlerDeadlineExceeded event", error);
+  });
 }
 
 async function finalize(

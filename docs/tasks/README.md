@@ -349,7 +349,8 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `tests/boundaries/scan.ts` + `contracts.test.ts` — the platform-internals rule | 033 (dated section 2026-10-13, driven by 034) |
 | `db/migrations/0016_service_roles.sql`, `packages/server/src/platform/das/role.ts`, `tests/boundaries/grants.test.ts` | 035 |
 | `packages/server/src/platform/das/lanes.ts`, `saturation.ts` (+ tests) | 036 |
-| `packages/server/src/platform/events/deadline.ts`, `slow-handlers.ts` (+ tests) | 037 |
+| `packages/server/src/platform/events/deadline.ts`, `slow-handlers.ts`, `deadline.test.ts` | 037 |
+| `features/events/ingest.ts` dispatch wiring, `handler-loader.ts`’s `LoadedHandler.source`, `ingest.test.ts`’s 037 tests | 005 (dated section 2026-10-13) |
 | `tests/boundaries/extractable.test.ts`, `shared-state.ts`, `scripts/service-graph.mjs`, `docs/service-graph.md` | 038 |
 | `tests/boundaries/web-contracts.test.ts`, `packages/web/src/features/README.md` | 041 |
 | `packages/server/src/platform/identity/contract.ts`, `token.ts`, `authenticate.ts` (+ tests) | 039 |

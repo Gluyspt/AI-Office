@@ -43,6 +43,25 @@ export interface EventHandler {
   handle(event: HandledEvent): Promise<void> | void;
 }
 
+/**
+ * A handler as the loader returns it: the module's own object, plus where it
+ * came from.
+ *
+ * Added 2026-10-13 for ticket 037 (dated section below). A deadline that
+ * expires has to name the handler that hung, and "a handler for PreToolUse"
+ * is not actionable when three features register for the same type — the
+ * reader needs the file. Nothing a handler module writes changes: `source` is
+ * attached by the loader, not declared by the module, which is why it is on
+ * this type and not on `EventHandler`.
+ *
+ * Structurally a superset of `EventHandler`, so every existing consumer and
+ * test keeps working unchanged.
+ */
+export interface LoadedHandler extends EventHandler {
+  /** Repo-relative-ish path, POSIX separators: `chat/handlers/reply.ts`. */
+  readonly source: string;
+}
+
 // src/features/events/ -> src/features/
 const featuresDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -70,8 +89,8 @@ function isEventHandler(candidate: unknown): candidate is EventHandler {
  */
 export async function loadHandlers(
   dir: string = featuresDir,
-): Promise<Map<string, EventHandler[]>> {
-  const byType = new Map<string, EventHandler[]>();
+): Promise<Map<string, LoadedHandler[]>> {
+  const byType = new Map<string, LoadedHandler[]>();
 
   let features: string[];
   try {
@@ -118,9 +137,17 @@ export async function loadHandlers(
         );
         continue;
       }
-      const list = byType.get(mod.default.eventType) ?? [];
-      list.push(mod.default);
-      byType.set(mod.default.eventType, list);
+      const loaded = mod.default;
+      const list = byType.get(loaded.eventType) ?? [];
+      // Delegated rather than spread: a spread would copy `handle` off the
+      // module object and break any handler that ever used `this`. None do
+      // today, and this costs nothing to be sure of.
+      list.push({
+        eventType: loaded.eventType,
+        handle: (event) => loaded.handle(event),
+        source: rel.split(path.sep).join("/"),
+      });
+      byType.set(loaded.eventType, list);
     }
   }
 

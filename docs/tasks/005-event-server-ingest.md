@@ -97,3 +97,43 @@ None.
 - [ ] No retention or pruning policy is specified for the event log. Table will grow without bound; flag for step 7 (Reliability) unless a policy is decided now.
 - [ ] Whether `session_id` can be populated at ingest time depends on ticket 002's correlation finding. The column is nullable here; ticket 010 owns filling it.
 - [ ] The design does not say whether the event server authenticates hook POSTs. It binds to localhost, but three users' agents can reach localhost. Assumed unauthenticated for v1; revisit at step 9 (access control).
+
+## Reopened 2026-10-13 — handler deadlines (ticket 037)
+
+**Scope:** `features/events/ingest.ts` (the `dispatch` loop), `features/events/handler-loader.ts`
+(`LoadedHandler.source`), `features/events/ingest.test.ts` (two end-to-end tests and a
+`cleanupByType` helper). All three are this ticket's files permanently, so 037 delivers the
+mechanism under `platform/events/` and the wiring lands here, per the reopening rule.
+
+**What was missing.** This ticket's dispatch already isolates a handler that *throws*
+(`ingest.ts`'s per-handler `try/catch`), and `handler-loader.ts` already skips a module that fails
+to load. Neither can observe a handler that **hangs** — dispatch is a sequential `for … await`, so
+one handler that never settles stalls every handler behind it and the ingest POST itself. Ingest is
+what a blocking hook waits on, so that is an agent stopped mid-turn.
+
+**Three changes:**
+
+1. `dispatch` runs each handler through `runWithDeadline`. The existing `try/catch` is unchanged and
+   still owns a throwing handler — that was never the gap.
+2. `loadHandlers` now returns `LoadedHandler[]`, which adds `source`: the handler's file, POSIX
+   separators. A deadline that expires has to name what hung, and "a handler for `PreToolUse`" is
+   not actionable when three features register for that type. The handler is wrapped by delegation
+   rather than spread, so a handler using `this` could not break. `LoadedHandler` is structurally a
+   superset of `EventHandler`, so every existing consumer and test keeps working.
+3. `HandlerDeadlineExceeded` is recorded **un-awaited** (awaiting a persist inside the dispatch loop
+   would put a database round trip on the hot path at the moment it is already late — the same shape
+   as `installTlsErrorLogging` in `server.ts`) and **never for its own event type**, because
+   `recordSystemEvent` dispatches and a hung handler for that type would otherwise recurse without
+   bound.
+
+- [x] A planted handler that never settles runs, never finishes, and the POST returns anyway.
+- [x] The recorded event names the handler file, asserted on the payload rather than the type.
+- [x] All 25 tests in `ingest.test.ts` pass, the p95 budget test included — a healthy handler sees
+      no difference.
+- [x] `loadHandlers` consumers and `handler-loader.test.ts` unchanged.
+
+**One trap worth leaving written down.** The first version of the end-to-end test planted its
+handler at the path an existing test had already imported. Node's ESM loader caches by URL — this
+file's own header says so — so the write was a cache hit and the planted handler never ran: the test
+failed in 30 ms with the handler untouched. **One file per test**, and the reason is in a comment
+beside the two paths.
