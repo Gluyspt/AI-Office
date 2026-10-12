@@ -351,8 +351,33 @@ split safe: it is the thing that would catch the spelling drifting apart.
 
 ### Still open after this
 
-- The **git identity form** for agent accounts (GLU-49) — one shared office identity or one per
-  account. Unchanged by this work; `gitIdentityFor` still assumes one per account and says so.
+- ~~The **git identity form** for agent accounts (GLU-49).~~ **Decided 2026-10-12, and it reverses
+  `gitIdentityFor`'s stated assumption.** The author is **the teammate who owns the desk**, with the
+  agent named in a trailer — not `AI Office agent (agent1)`. Three consequences this ticket owns:
+
+  1. **The mapping lives in config, not the schema.** `sessions.owner` is the *agent* account
+     (`agent2` — see `claim.ts`'s refusal text), and agent accounts are purpose-created precisely so
+     that no human login is named in the sudoers template. So nothing in the data model maps
+     `agent1 → a teammate`, and the decision was that config supplies it, carried into the desk as
+     `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` on the same channel as `OFFICE_SESSION_TOKEN`. No
+     migration, no reopening of 008.
+  2. **Each teammate supplies their own address; the office ships no default.** Following the lock-TTL
+     and lane-config precedent: provisioning a desk for a teammate with no configured identity is
+     refused rather than guessed, because the guess is permanent in `git log`. **Which address** each
+     teammate uses is theirs to choose and is not this ticket's to pick — a personal address published
+     in every agent commit of a pushed repo is a decision with a privacy cost, and a noreply alias
+     reads identically in `git blame`.
+  3. **Whether the agent trailer is emitted is a per-project office setting, not a build-time
+     constant.** Asked for 2026-10-12: the web UI should let a project choose whether co-authorship
+     shows. That is a runtime toggle plus a UI surface, which no ticket in steps 1–3 owns — it is
+     step 4 (git workflow) work and is recorded on GLU-49 rather than invented here.
+
+  **Caveat worth knowing before it bites:** the design's git workflow is **squash merge** (step 4).
+  A squash collapses commits, so a trailer survives only as text in whatever body the squash builds —
+  which is why the trailer should be `Co-Authored-By:` rather than a custom `Agent:` field. That form
+  is git-native, rendered by GitHub, understood by tooling, and is already the convention this repo
+  uses for its own commits. Attribution in an author field is stronger than attribution in a trailer;
+  that is the cost of this decision, accepted knowingly.
 - Whether an **appended `mcpServers:` entry** should become a manifest exception like a
   `loadXConfig()` section, so 018 (and later a graph server per project) can add one without
   reopening this ticket each time. Flagged for a human; the cost of getting it wrong either way is

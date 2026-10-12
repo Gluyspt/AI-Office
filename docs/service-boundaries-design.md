@@ -334,3 +334,10 @@ Not resolved by invention, per the repo's own rule.
 
 **Critical path** (4 deep): 033 → 034 → 038 → 040.
 **Startable immediately:** 033. **Then in parallel:** 034, 037, 039.
+
+**Sequencing decided 2026-10-12: 033 before 018**, rather than the two in parallel. 033 is the only
+ticket here whose value decays — every ticket landing before it adds cross-feature code in the old
+shape, growing both the retrofit table in §7 and the baseline 033 ships with. One idle ticket on the
+step-2 critical path buys every later ticket being written in the new shape. The live-session batch
+(016's last four measurements plus 017's final criterion) also runs **before 018 starts**, because a
+"no" on the `NODE_EXTRA_CA_CERTS` check overturns the HTTP transport recommendation 018 is built on.

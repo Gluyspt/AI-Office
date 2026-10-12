@@ -222,7 +222,11 @@ flowchart TD
 ```
 
 **Boundaries critical path** (4 deep): 033 → 034 → 038 → 040. It is independent of the step 1–3
-graph: 033 is startable today, in parallel with 018. What couples the two sets is the *retrofit* —
+graph, so 033 could run in parallel with 018 — but **033 goes first, decided 2026-10-12.** The
+reason is that 033 is the only ticket whose value decays: every ticket that lands before it adds
+cross-feature code in the old shape, growing both the retrofit and the baseline 033 has to ship
+with. 018 and everything after it are then written in the new shape. The critical path idles one
+ticket to stop paying compound interest. What couples the two sets is the *retrofit* —
 pointing existing features at the DAS and at each other's contracts — and that lands as dated
 sections on the tickets that own those files, not as new tickets. The order, and which reopenings
 are high-risk, is in
@@ -383,6 +387,8 @@ Thirty-seven questions the design left open have been settled and written into t
 | **`tasks` and `locks` are one deployment unit — permanently — and there are FOUR transactional crossings, not one.** Asked directly 2026-10-12 and answered by counting rather than recalling: `claim_task` and `complete_task` span tasks + locks; **`pause` and `resume` span control + tasks + locks** (`pause.ts:856`, `resume.ts:482`, the latter commenting that clearing `paused` without restarting the lock TTL "hands the sweeper a live-but-expired lock"). Every one protects the same failure — a task and its file scope disagreeing about who owns what — and a saga needs a compensating action per transaction, any of which can fail and produce exactly that state. **The saga option is rejected, not deferred.** The count also found a hole in 040: `control` is inside the transactional set, so pause/resume must first be split along "kill the agent" vs "move the task and mark its locks" — 040 now blocked by 028. The hot path needs none of this: the guard holds no transaction at all, so the extractable seam inside `locks` is the guard's read path, not locks-versus-tasks. | 033, 034, 038, 040 |
 | **Platform may be called by everyone and calls nobody — so identity is platform.** `events`, `das`, `mcp` and `identity` are infrastructure, not services; requiring a contract to publish an event buys nothing. The rule fails exactly once against the tree: `mcp/protocol.ts` imports `session-auth.ts` out of the sudo-holding service, which would put a network hop into every MCP tool call once `control` is split. | 033, 039 |
 | **The pool is laned, and the guard gets a reservation.** A found defect, not a refactor: one pool with one `max` means a board query storm or a long `planning` transaction can hold every connection while the PreToolUse guard — a live agent on a ~2 s fail-open budget — waits for one. Two lanes (`hot` for guard and ingest, `general` for the rest), a reservation `general` can never consume, and an immediate refusal rather than a queue on the hot lane, because waiting 1.9 s to then fail open is strictly worse. | 036 |
+
+| **An agent commits as the teammate who owns the desk, with the agent in a `Co-Authored-By:` trailer.** Decided 2026-10-12 (GLU-49), reversing `gitIdentityFor`'s stated assumption of one identity per agent account. The owning teammate is **not** derivable from the data model — `sessions.owner` is the agent account — so config supplies the mapping and it rides into the desk as `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` alongside `OFFICE_SESSION_TOKEN`; no migration. Each teammate supplies their own address and **no default ships**, since a guess is permanent in `git log`. Whether the trailer is emitted at all is a **per-project office setting** with a UI toggle — step 4 work, recorded on GLU-49. The known cost, accepted: under squash merge a trailer is weaker than an author field, which is why it must be `Co-Authored-By:` and not a custom field. | 009, GLU-49, step 4 |
 
 ## Still open before starting
 
