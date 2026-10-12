@@ -60,6 +60,11 @@ import { loadSessionsConfig } from "../../core/config.ts";
 import { query, withTransaction } from "../../core/db/pool.ts";
 import { ingestEmitter, recordSystemEvent, type StoredEventRow } from "../events/ingest.ts";
 import { sessionName } from "./naming.ts";
+import {
+  SESSION_TOKEN_ENV_VAR,
+  mintSessionToken,
+  type MintedSessionToken,
+} from "./session-token.ts";
 import { getTmuxAdapter, type TmuxAdapter } from "./tmux.ts";
 
 // --- The transition table -------------------------------------------------------
@@ -173,7 +178,13 @@ export const SESSION_COLUMNS = `
   ended_at::text as ended_at
 `;
 
-interface SessionRow {
+/**
+ * Exported for ./session-auth.ts, which maps a row it selected by
+ * `token_hash` (a column SESSION_COLUMNS deliberately omits) through
+ * `sessionRowToRecord` rather than keeping a second mapping in step with
+ * this one.
+ */
+export interface SessionRow {
   id: string;
   project_id: string;
   tmux_name: string;
@@ -242,6 +253,12 @@ export interface SessionsDeps {
   /** Resolves when an event carrying `claudeSessionId` is ingested, or times out. */
   waitForFirstEvent(claudeSessionId: string, timeoutMs: number): Promise<StoredEventRow | null>;
   newClaudeSessionId(): string;
+  /**
+   * Overridable for the same reason `newClaudeSessionId` is: a test that
+   * asserts the token reached the pane environment has to know what to look
+   * for. Production never overrides it.
+   */
+  newSessionToken(): MintedSessionToken;
 }
 
 function defaultWaitForFirstEvent(
@@ -273,6 +290,7 @@ let deps: SessionsDeps = {
   },
   waitForFirstEvent: defaultWaitForFirstEvent,
   newClaudeSessionId: () => crypto.randomUUID(),
+  newSessionToken: mintSessionToken,
 };
 
 /** Test seam. Partial override; anything omitted keeps the real behaviour. */
@@ -287,6 +305,7 @@ export function __resetSessionsDeps(): void {
     },
     waitForFirstEvent: defaultWaitForFirstEvent,
     newClaudeSessionId: () => crypto.randomUUID(),
+    newSessionToken: mintSessionToken,
   };
 }
 
@@ -455,6 +474,26 @@ export async function startSession(input: StartSessionInput): Promise<StartSessi
   const hookArrivalTimeoutMs =
     input.hookArrivalTimeoutMs ?? loadSessionsConfig().hookArrivalTimeoutMs;
   const claudeSessionId = deps.newClaudeSessionId();
+
+  // THE PER-SESSION CREDENTIAL (GLU-55). Minted here, in the same breath as
+  // the claude session id, for the same reason: this is the one place that
+  // knows a desk is being created, and the token has to exist before the
+  // spawn because it travels in the pane environment.
+  //
+  // It is not built by `agentLaunchSpec` even though that function is "the
+  // single source of truth for how an agent session is launched", and the
+  // exception is worth stating: that spec is built once per *role* at
+  // provisioning time, before any session exists, while this value is per
+  // *session*. Spike 003 §6 proposed adding it to the spec's inputs; doing so
+  // would mean rebuilding the spec at every spawn and giving provisioning a
+  // token it must not have. So the spec declares the launch environment a
+  // role shares, this merges the one variable only a spawn can know, and
+  // `SESSION_TOKEN_ENV_VAR` keeps the two spellings from drifting.
+  //
+  // Only the hash is stored. Only the token is handed out, once, to one
+  // process. Neither is ever logged — the announce calls below carry the
+  // session record, which does not include it.
+  const sessionToken = deps.newSessionToken();
   const tmuxName = sessionName({
     project: input.projectSlug,
     role: input.role,
@@ -467,8 +506,8 @@ export async function startSession(input: StartSessionInput): Promise<StartSessi
   try {
     const { rows } = await query<SessionRow>(
       `insert into sessions
-         (project_id, tmux_name, role, dept, owner, backend, model, model_reason, claude_session_id)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         (project_id, tmux_name, role, dept, owner, backend, model, model_reason, claude_session_id, token_hash)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        returning ${SESSION_COLUMNS}`,
       [
         input.projectId,
@@ -480,6 +519,7 @@ export async function startSession(input: StartSessionInput): Promise<StartSessi
         input.model,
         input.modelReason,
         claudeSessionId,
+        sessionToken.hash,
       ],
     );
     session = sessionRowToRecord(rows[0] as SessionRow);
@@ -520,12 +560,19 @@ export async function startSession(input: StartSessionInput): Promise<StartSessi
 
   // 2. Spawn. The session id is chosen by us and passed to the CLI, which is
   //    what makes correlation direct rather than a cwd heuristic (spike 001).
+  //    The token goes in LAST and wins over anything the caller passed under
+  //    the same name. A caller supplying its own OFFICE_SESSION_TOKEN is
+  //    either confused or testing a forgery, and in both cases the desk must
+  //    present the credential this row actually stores — otherwise the token
+  //    in the pane and the hash in the database disagree and every tool call
+  //    the desk makes is refused as `unknown`, which reads like a broken MCP
+  //    server rather than a bad caller.
   const spawn = await deps.tmux.newSession({
     user: input.owner,
     name: tmuxName,
     cwd: input.cwd,
     command: [input.claudeBin, "--session-id", claudeSessionId],
-    ...(input.env ? { env: input.env } : {}),
+    env: { ...input.env, [SESSION_TOKEN_ENV_VAR]: sessionToken.token },
   });
   if (!spawn.ok) {
     const failed = await fail(

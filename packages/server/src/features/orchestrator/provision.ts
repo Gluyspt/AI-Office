@@ -94,6 +94,7 @@ import { X509Certificate } from "node:crypto";
 import { chmod, chown, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import nodePath from "node:path";
 import { fileURLToPath } from "node:url";
+import { SESSION_TOKEN_ENV_VAR } from "./session-token.ts";
 
 /** Target-side paths are always POSIX: the host is Linux, the tests are not. */
 const posix = nodePath.posix;
@@ -186,7 +187,9 @@ export type ProvisionErrorKind =
   | "invalid_fragment"
   /** The account's token is not in the set the event server accepts. */
   | "token_not_accepted"
-  | "forbidden_permission_mode";
+  | "forbidden_permission_mode"
+  /** A role file's `mcpServers` block refers to a launch variable nothing sets. */
+  | "invalid_role_definition";
 
 export class ProvisionError extends Error {
   readonly kind: ProvisionErrorKind;
@@ -457,6 +460,45 @@ function stringArray(value: unknown, where: string, kind: ProvisionErrorKind): r
  * dropped, which is what makes re-provisioning idempotent and stops a
  * fragment that duplicates a base entry from double-posting every event.
  */
+/**
+ * Refuses the two `permissions.allow` rules that look permissive and approve
+ * nothing. Both are documented Claude Code behaviour, both fail silently, and
+ * both have the expensive symptom: every tool call prompts while the settings
+ * file reads as though it does not, which sends whoever debugs it to the MCP
+ * server instead of to the allowlist (spike 003 §6).
+ *
+ *   1. An **unanchored allow glob** — `*`, `B*`, `mcp__*` — is skipped with a
+ *      warning. An allow rule's server segment must be glob-free so the rule
+ *      names a specific configured server. The same pattern is perfectly
+ *      valid in a *deny* rule, and that asymmetry is the whole trap.
+ *   2. A `mcp__` rule containing **parentheses** is dropped entirely when the
+ *      settings file loads. There is no parameter matching in MCP allow
+ *      rules, so `mcp__office_tasks__claim_task(task_id:*)` is not a narrower
+ *      rule than the glob — it is a discarded line, i.e. a rule that silently
+ *      became no rule at all. Parameter-level restriction needs
+ *      --disallowedTools.
+ *
+ * Only `mcp__` rules are checked. `Bash(git push:*)` and friends are a
+ * different grammar where parentheses are how the rule works, and 020's
+ * fragment relies on it.
+ */
+function assertAllowRuleUsable(rule: string, where: string): void {
+  if (!rule.startsWith("mcp__")) return;
+  if (rule.includes("(") || rule.includes(")")) {
+    throw new ProvisionError(
+      "invalid_template",
+      `${where}: the rule ${JSON.stringify(rule)} contains parentheses, and a mcp__ rule with parentheses is DROPPED when the settings file loads — it would appear in the invalid-settings dialog and in \`claude doctor\`, and approve nothing. MCP allow rules have no parameter matching; restrict parameters with --disallowedTools instead.`,
+    );
+  }
+  const server = rule.slice("mcp__".length).split("__")[0] ?? "";
+  if (server === "" || server.includes("*")) {
+    throw new ProvisionError(
+      "invalid_template",
+      `${where}: the rule ${JSON.stringify(rule)} globs the SERVER segment, so it is skipped with a warning and auto-approves nothing while looking permissive. Name the server: mcp__office_tasks__* . (The same glob is valid in a deny rule — the asymmetry is the trap.)`,
+    );
+  }
+}
+
 export function mergeOfficeSettings(
   template: HookTemplate,
   options: { readonly permissionMode?: string } = {},
@@ -485,9 +527,15 @@ export function mergeOfficeSettings(
     }
   }
 
-  const allow = new Set<string>(
-    stringArray(basePermissions.allow ?? [], "base.settings.json: permissions.allow", "invalid_template"),
-  );
+  const allow = new Set<string>();
+  for (const rule of stringArray(
+    basePermissions.allow ?? [],
+    "base.settings.json: permissions.allow",
+    "invalid_template",
+  )) {
+    assertAllowRuleUsable(rule, "base.settings.json: permissions.allow");
+    allow.add(rule);
+  }
 
   for (const fragment of template.fragments) {
     const where = `config/hooks/fragments/${fragment.name}`;
@@ -515,6 +563,7 @@ export function mergeOfficeSettings(
         `${where}: permissions.allow`,
         "invalid_fragment",
       )) {
+        assertAllowRuleUsable(rule, `${where}: permissions.allow`);
         allow.add(rule);
       }
     }
@@ -710,6 +759,17 @@ export interface AgentLaunchInput {
  * $OFFICE_HOOK_INGEST_TOKEN instead of having them rendered into its command
  * line. (The *http* entries cannot — a hook's `url` is not interpolated, only
  * its `headers` are. See this file's header.)
+ *
+ * THE ONE LAUNCH VARIABLE THIS DOES NOT SET, and why (GLU-55). A desk also
+ * carries `OFFICE_SESSION_TOKEN`, the per-session credential its MCP servers
+ * present. Spike 003 §6 proposed adding it to this function's inputs, and
+ * that was not taken: this spec is built once per *role* at provisioning
+ * time, before any session exists, while that token is per *session* and is
+ * minted by `startSession` — the only place that knows a desk is being
+ * created. Passing it through here would mean rebuilding the spec at every
+ * spawn and handing provisioning a secret it has no use for. So `startSession`
+ * merges that one variable at spawn and `launchEnvironmentNames()` below is
+ * what keeps the two halves' spellings from drifting apart.
  */
 export function agentLaunchSpec(input: AgentLaunchInput): AgentLaunchSpec {
   const { settingsPath } = officeConfigPaths(input.homeDir);
@@ -724,6 +784,121 @@ export function agentLaunchSpec(input: AgentLaunchInput): AgentLaunchSpec {
       OFFICE_EVENT_SERVER_ORIGIN: input.eventServerOrigin,
       OFFICE_HOOK_INGEST_TOKEN: input.hookToken,
     },
+  };
+}
+
+// --- Role definitions -----------------------------------------------------------
+//
+// THE §3.3 TRAP, caught here instead of at spawn time.
+//
+// A role file's `mcpServers:` block reaches the office's MCP endpoints by
+// having Claude Code expand `${VAR}` out of the launch environment — the same
+// channel that already carries NODE_EXTRA_CA_CERTS. Spike 003 §3.3 quotes the
+// decisive sentence in the reference: if a referenced variable is unset and
+// has no default, **the config still loads** and Claude Code "uses the
+// unexpanded `${VAR}` text as-is", reporting the problem only in
+// `claude mcp list` output.
+//
+// So a typo in a variable name does not fail the desk. It makes the desk
+// present the literal string `${OFFICE_SESSION_TOKEN}` as its credential —
+// the SAME string on every affected desk, which a careless server would read
+// as one shared identity. The endpoints refuse it (session-auth.ts,
+// kind `unexpanded`), but refusing at the door means the symptom is "this
+// desk cannot claim any task", hours after provisioning, with the evidence in
+// a list nobody is reading.
+//
+// Hence this check, which is the exact parallel of substitutePlaceholders()
+// refusing an unknown `${...}` in the hook template: a variable this module
+// cannot promise to set is a provisioning failure, named, before the account
+// is ever used.
+
+/**
+ * The launch environment's variable names: what `agentLaunchSpec` sets, plus
+ * the per-session token `startSession` merges in at spawn.
+ *
+ * Derived from a real spec rather than hand-listed, so adding a variable to
+ * `agentLaunchSpec` cannot leave this list behind.
+ */
+export function launchEnvironmentNames(): readonly string[] {
+  const probe = agentLaunchSpec({
+    role: "probe",
+    homeDir: "/home/probe",
+    caCertPath: "/dev/null",
+    eventServerOrigin: "https://probe.invalid",
+    hookToken: "probe",
+  });
+  return [...Object.keys(probe.env), SESSION_TOKEN_ENV_VAR].sort();
+}
+
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
+// Matches ${VAR} and ${VAR:-default}; the default form is legal even for a
+// variable nothing sets, because that is what a default is for.
+const LAUNCH_VAR_RE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(:-[^}]*)?\}/g;
+
+export interface RoleDefinitionReport {
+  /** Launch variables the frontmatter expects to be expanded. */
+  readonly variables: readonly string[];
+  /** Whether the frontmatter declares any MCP servers at all. */
+  readonly declaresMcpServers: boolean;
+}
+
+/**
+ * Checks one role definition before it is installed.
+ *
+ * Only the YAML frontmatter is scanned. The body is prose the model reads,
+ * where a `${...}` is an example and not an expansion — scanning it would
+ * refuse a role file for documenting the very trap this function enforces.
+ */
+export function checkRoleDefinition(role: string, text: string): RoleDefinitionReport {
+  const frontmatter = FRONTMATTER_RE.exec(text);
+  if (!frontmatter) {
+    throw new ProvisionError(
+      "invalid_role_definition",
+      `agents/${role}.md has no YAML frontmatter. \`claude --agent ${role}\` identifies a role by its frontmatter \`name\`, so a file without one installs cleanly and then does nothing.`,
+    );
+  }
+  const block = frontmatter[1] ?? "";
+
+  const known = launchEnvironmentNames();
+  const seen = new Set<string>();
+  const unknown = new Set<string>();
+  for (const match of block.matchAll(LAUNCH_VAR_RE)) {
+    const name = match[1] as string;
+    const hasDefault = match[2] !== undefined;
+    seen.add(name);
+    if (!hasDefault && !known.includes(name)) unknown.add(name);
+  }
+
+  if (unknown.size > 0) {
+    throw new ProvisionError(
+      "invalid_role_definition",
+      `agents/${role}.md refers to ${[...unknown]
+        .map((name) => `\${${name}}`)
+        .join(", ")}, which the launch environment does not set (it sets ${known.join(
+        ", ",
+      )}). Claude Code loads an MCP config with unset variables and sends the literal \${...} text as the value, so this would not fail the desk — it would make the desk unidentifiable, and the warning appears only in \`claude mcp list\`. Either use one of those names, or write \${NAME:-default} if a default is genuinely meant.`,
+    );
+  }
+
+  // An http server reached over plain http would carry the session token in
+  // clear text, and the office decided https on every endpoint including
+  // loopback. Checked here for the same reason mergeOfficeSettings checks a
+  // hook url: the role file is the other place a url is written by hand.
+  for (const line of block.split(/\r?\n/)) {
+    const url = /^\s*url:\s*(\S+)\s*$/.exec(line);
+    if (!url) continue;
+    const value = url[1] as string;
+    if (!value.startsWith("https://") && !value.startsWith("${")) {
+      throw new ProvisionError(
+        "invalid_role_definition",
+        `agents/${role}.md has an MCP server url ${JSON.stringify(value)}. Every office endpoint is https, including on loopback — this one would carry the desk's session token in clear text.`,
+      );
+    }
+  }
+
+  return {
+    variables: [...seen].sort(),
+    declaresMcpServers: /^\s*mcpServers:/m.test(block),
   };
 }
 
@@ -1023,6 +1198,19 @@ export async function provisionUser(request: ProvisionRequest): Promise<Provisio
       throw new ProvisionError(
         "invalid_request",
         `no role definition at ${source}: ${(error as Error).message}. \`claude --agent ${role}\` needs this file installed in the account's own config directory.`,
+      );
+    }
+    // Before it is installed, not after: see checkRoleDefinition's header
+    // for why an unexpandable variable in here is worse than a crash.
+    const report = checkRoleDefinition(role, definition);
+    if (!report.declaresMcpServers) {
+      // A warning, not a refusal. A role with no MCP servers is a legitimate
+      // configuration (step 1's spine ran that way for weeks), but from step
+      // 2 on it is far more often a role file that lost its block in an edit
+      // — and the symptom is an agent that cannot claim work and does not
+      // know why, since the tools simply are not there to call.
+      warnings.push(
+        `agents/${role}.md declares no mcpServers, so this desk will have no office tools — no claim_task, no complete_task, no start_session. Deliberate for a plain chat desk; a mistake for a lead.`,
       );
     }
     const target = agentDefinitionTarget(paths.configDir, role);

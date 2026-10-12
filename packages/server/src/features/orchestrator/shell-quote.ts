@@ -184,7 +184,7 @@ export function checkMessageText(text: string, maxBytes: number = TMUX_COMMAND_B
   if (text.length === 0) {
     return { ok: false, rejection: { kind: "empty", message: "message text is empty" } };
   }
-  if (text.includes(" ")) {
+  if (text.includes("\0")) {
     // execve arguments are NUL-terminated: the kernel would silently
     // deliver the prefix and drop the rest. Truncation with no error is
     // precisely what the acceptance criterion forbids.
@@ -380,7 +380,7 @@ export function checkEnv(env: Readonly<Record<string, string>>): CommandRejectio
     if (!ENV_KEY_RE.test(key)) {
       return { kind: "invalid_env", message: `illegal environment variable name: ${JSON.stringify(key)}` };
     }
-    if (value.includes(" ") || value.includes("\n")) {
+    if (value.includes("\0") || value.includes("\n")) {
       return {
         kind: "invalid_env",
         message: `value of ${key} contains a NUL or newline, which cannot survive an execve argument`,

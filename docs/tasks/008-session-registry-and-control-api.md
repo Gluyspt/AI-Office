@@ -176,3 +176,88 @@ making the suite depend on a new required variable.
 
 **Verified on the real VPS kernel**, not just locally: 22 files, **435
 passed, 1 skipped**, 19.78 s, exit 0 — 44 tests added by this ticket.
+
+## Reopened 2026-10-12 — the per-session secret (GLU-55)
+
+Spike 003 §3.2 measured the office's identity gap against the live schema: `sessions` had no token,
+secret or nonce, and the only secret the office minted was 009's `HOOK_INGEST_TOKEN`, which is **per
+Linux account**. One account hosts several desks by design (one Linux user per *teammate*, settled
+2026-10-07), so an account-scoped credential identifies the teammate and `claim_task`'s "checks owner
+match" silently becomes "same teammate". That is not the check the design asks for, and the failure
+is invisible: the wrong desk claiming a task looks exactly like the right one.
+
+The spike split the work across four tickets (008 mints, 009 carries, 017 + 018 verify). **This
+ticket reopened rather than spawning a follow-up**, on the grounds that `sessions.ts` and the session
+schema are 008's permanently — the same rule that makes `config.ts` 004's forever. The alternative
+(a new ticket owning two files 008 owns) would have broken one-file-one-ticket to preserve a
+ticket's closed status, which is the wrong thing to protect. 009's half reopened the same way.
+
+### Scope added
+
+- `db/migrations/0015_session_tokens.sql` — `sessions.token_hash`, its sha-256 check constraint and
+  partial unique index
+- `packages/server/src/features/orchestrator/session-token.ts` — the value: mint, hash, shape,
+  `looksUnexpanded`, `bearerCredential`, `SESSION_TOKEN_ENV_VAR`
+- `packages/server/src/features/orchestrator/session-auth.ts` — `authenticateSessionToken`, the
+  typed refusals, and the liveness rule
+- `packages/server/src/features/orchestrator/session-auth.test.ts` — 16 tests
+
+### Acceptance criteria
+
+- [x] A per-session credential is minted at spawn, before tmux is started, and reaches the pane
+      environment as `OFFICE_SESSION_TOKEN`. Asserted by reading the env off the recorded
+      `newSession` request.
+- [x] **Only the hash is stored.** `sessions.token_hash` holds sha-256 hex, enforced by a check
+      constraint, so storing the plaintext fails at the insert rather than leaving a working
+      credential in the database. A test asserts the stored value is the hash and not the token, and
+      another asserts presenting the *hash* does not authenticate — it is the one value a reader of
+      the database would hold.
+- [x] The token never leaves the office in a response: `SESSION_COLUMNS` does not carry
+      `token_hash`, and a test asserts the returned session record does not contain the token.
+- [x] **Two desks on the same Linux account resolve to different sessions.** This is the criterion
+      the whole change exists for; the test starts two desks as `agent1` and authenticates both.
+- [x] A token stops working the moment its session ends, with a refusal that says so rather than
+      "unauthorized". Mutation-tested: widening the live set to include `ended` turns that test red.
+- [x] A credential that still looks like `${OFFICE_SESSION_TOKEN}` is refused with its own reason
+      naming the launch environment.
+- [x] Missing, unexpanded, malformed, unknown and not-live are five distinct refusals, each naming a
+      different repair.
+- [x] No refusal echoes the presented credential — they are returned over HTTP and land in logs.
+
+### Decided
+
+**No `revoked_at` column; validity is derived from the session's status.** The spike's requirement is
+that a killed desk's token stops working. A revocation flag would be a second source of truth that
+four call sites must remember to write (kill, SessionEnd, the hook-gate failure path, the
+spawn-failure path), and forgetting one leaves a dead desk able to claim work. Joining the row and
+requiring `status in ('starting','running')` — the same definition of live the two partial unique
+indexes in 0003 already use — cannot drift, because there is no second write.
+
+**`starting` counts as live.** An agent's MCP servers connect at startup, before the hook gate has
+promoted the row, so refusing those calls would park a desk for a reason it cannot act on. The hook
+gate already kills a desk that never reports, so a `starting` row is never indefinitely claimable.
+
+**The token is minted in `startSession`, not in `agentLaunchSpec`** — a deliberate deviation from
+spike 003 §6, which proposed adding it to the launch spec's inputs. That spec is built once per
+*role* at provisioning time, before any session exists; this value is per *session*. Threading it
+through would mean rebuilding the spec at every spawn and handing provisioning a secret it has no
+use for. `SESSION_TOKEN_ENV_VAR` is exported so the two halves cannot drift on the spelling, and
+009's role-file check derives its known-variable list from a real spec plus that constant.
+
+**`session-token.ts` is split from `session-auth.ts`** to keep a module cycle out of the session
+machine: `sessions.ts` mints, and the authenticator reads `sessions.ts`. The split also keeps the
+database pool out of `provision.ts`, which needs only the variable's name.
+
+**The token overrides a caller-supplied `OFFICE_SESSION_TOKEN` in the spawn environment.** A caller
+passing its own is either confused or testing a forgery; either way the desk must present what the
+row stores, or every tool call it makes is refused as `unknown` — which reads like a broken MCP
+server rather than a bad caller.
+
+### Carried to 017 and 018
+
+Both call `authenticateSessionToken` and neither reimplements any of it. The result is *identity*,
+not authorisation: whether that desk may claim a particular task is 017's own check against the
+task's owner, and keeping the two apart is what lets 017's refusals name the conflict instead of
+saying "denied". The MCP endpoints must map the five refusal kinds onto `isError: true` tool results
+with the message text intact (spike 003 §4), not onto a bare 401 — a desk that reads "unauthorized"
+retries forever.

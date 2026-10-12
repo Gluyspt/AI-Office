@@ -45,6 +45,15 @@ points at but nothing created; on a real host `deploy/host/provision-host.sh` do
 
 **Manifest exception.** Dependency additions to an existing `package.json`, appended lines in `.env.example`, and a new `loadXConfig()` section appended to `packages/server/src/core/config.ts`, are append-only and are *not* part of any ticket's file scope. Every other file is owned. Editing an existing config section, the shared readers, or `ConfigError` still belongs to ticket 004.
 
+**Reopening a closed ticket beats inventing an owner for its files.** Where a later finding needs a
+change inside a file an earlier ticket owns permanently — `sessions.ts` for 008, `provision.ts` for
+009, `config.ts` for 004 — that ticket is reopened with a dated section carrying its own scope,
+criteria and decisions, rather than a new ticket taking files it does not own. First done 2026-10-12
+for GLU-55, which crossed four tickets. The alternative breaks one-file-one-ticket in order to
+preserve a ticket's closed status, which is the wrong thing to protect. A *new* file that plainly
+belongs to an existing concern (`session-token.ts`, `session-auth.ts`) joins that ticket's scope in
+the ownership map with the date it was added.
+
 **Open questions are not TODOs.** Where the design leaves something undecided, the ticket says so and names the decision rather than inventing an answer. Several open questions are the design's own, carried forward to the ticket where they first bite.
 
 ## Index
@@ -208,6 +217,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `db/migrations/0012_gate_bypass.sql` | 032 |
 | `db/migrations/0013_events_project_fk.sql` | — (maintenance; see below) |
 | `db/migrations/0014_task_learning.sql` | 017 |
+| `db/migrations/0015_session_tokens.sql` | 008 (added 2026-10-12, GLU-55) |
 | `scripts/dev-cert.mjs` | — (maintenance; see below) |
 | `deploy/host/sudoers.d/office` | 007 |
 | `docs/spikes/001-hook-payloads.md` | 002 |
@@ -238,6 +248,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `packages/server/src/features/events/bus.ts`, `packages/server/src/features/realtime/routes/ws.ts` | 006 |
 | `packages/server/src/features/orchestrator/tmux.ts`, `naming.ts`, `shell-quote.ts` | 007 |
 | `packages/server/src/features/orchestrator/sessions.ts`, `packages/server/src/features/orchestrator/routes/sessions.ts`, `packages/server/src/features/orchestrator/handlers/session-start.ts`, `packages/server/src/features/orchestrator/handlers/session-end.ts` | 008 |
+| `packages/server/src/features/orchestrator/session-token.ts`, `packages/server/src/features/orchestrator/session-auth.ts` | 008 (added 2026-10-12, GLU-55) |
 | `packages/server/src/features/orchestrator/provision.ts` | 009 |
 | `packages/server/src/features/chat/handlers/reply.ts`, `packages/server/src/features/chat/transcript.ts`, `packages/server/src/features/chat/conversations.ts`, `packages/server/src/features/chat/routes/chat.ts` | 010 |
 | `packages/server/src/features/tasks/states.ts`, `packages/server/src/features/tasks/model.ts` | 012 |
@@ -299,9 +310,9 @@ Thirty-one questions the design left open have been settled and written into the
 | **A message delivered while a permission dialog is up approves the pending call — confirmed on the target, 20/20, with proof of execution.** WSL saw 3/3; the VPS agrees at full trial count and the approved command left its file on disk. Ticket 008's gate on dialog state is a requirement, not a precaution. | 008, 007 |
 | **Per-role MCP servers attach through the role file's own `mcpServers:` frontmatter, over HTTP to the orchestrator's existing listener.** A native agent-definition field that connects at startup under `--agent`, and 009 already installs those files — so per-role wiring costs no new launch flag. HTTP rather than stdio because under stdio the process count is servers × **agents**, not servers × projects: against the measured ~290 MB idle agent and ~6-agent ceiling on a 3.2 GB box, three stdio servers per desk spend the cap on overhead and multiply Postgres connections. The office's task and session tools are routes on a server already running. Spike 003. | 016, 017, 018 |
 | **A tool call's identity comes from `${VAR}` expansion into the MCP config from the launch environment** — the same channel that already carries `NODE_EXTRA_CA_CERTS`. Expansion works in `command`, `args`, `env`, `url` and `headers`, so the model never sees the credential and cannot change it by calling a tool differently. Spike 003 §3. | 016, 017, 018 |
-| **The office needs a per-SESSION secret, and 008 must mint it.** `sessions` has no token column and the only secret today is 009's per-**account** `HOOK_INGEST_TOKEN`. One Linux account hosts several desks by design, so an account token cannot distinguish them — and `claim_task` "checks owner match", which would silently degrade to "same teammate". Spike 003 §3.2. | 008, 009, 017, 018 |
-| **An MCP credential that still looks like `${...}` must be refused.** An unset variable does NOT fail the server: the config loads with the literal placeholder, the warning goes only to `claude mcp list`, and every desk then presents the same string as its identity. The `NODE_EXTRA_CA_CERTS` failure shape again — works perfectly, silently wrong. Spike 003 §3.3. | 017, 018 |
-| **MCP tool calls need pre-approval, so 009's empty allowlist blocks every task tool.** In `manual` mode an unlisted `claim_task` prompts and parks the desk. 009's base settings must allow `mcp__office_tasks__*` and `mcp__office_session__*`. **`"mcp__*"` as an ALLOW rule silently approves nothing** — an unanchored allow glob is skipped with a warning while looking permissive; the server segment must be glob-free. It *is* valid as a deny rule. A `mcp__` rule with parentheses is dropped entirely. Spike 003 §6. | 009, 016, 017, 020 |
+| **The office needs a per-SESSION secret, and 008 must mint it. LANDED 2026-10-12 (GLU-55).** An account token cannot distinguish desks, because one Linux account hosts several by design — so `claim_task`'s "checks owner match" would silently degrade to "same teammate". `sessions.token_hash` holds sha-256 of a token minted in `startSession` and carried to the pane as `OFFICE_SESSION_TOKEN`; `authenticateSessionToken` resolves it back to one desk. **Validity is derived from the session's status, not a `revoked_at` flag** — a revocation column is a second source of truth four call sites must remember to write, and forgetting one leaves a dead desk able to claim work. Spike 003 §3.2. | 008, 009, 017, 018 |
+| **An MCP credential that still looks like `${...}` must be refused. LANDED 2026-10-12** — `looksUnexpanded` in `session-token.ts`, refused with its own reason naming the launch environment, and 009's provisioning now also refuses a role file naming a variable the launch environment does not set. An unset variable does NOT fail the server: the config loads with the literal placeholder, the warning goes only to `claude mcp list`, and every desk then presents the same string as its identity. The `NODE_EXTRA_CA_CERTS` failure shape again — works perfectly, silently wrong. Spike 003 §3.3. | 017, 018 |
+| **MCP tool calls need pre-approval, so 009's empty allowlist blocks every task tool. LANDED 2026-10-12** — the allowlist now names `mcp__office_tasks__*` and `mcp__office_session__*`, server names settled as UNDERSCORES (§1's example said `office-tasks`, §6's rule said `office_tasks`, and a mismatch names a server that does not exist), and provisioning refuses both unusable rule shapes. In `manual` mode an unlisted `claim_task` prompts and parks the desk. 009's base settings must allow `mcp__office_tasks__*` and `mcp__office_session__*`. **`"mcp__*"` as an ALLOW rule silently approves nothing** — an unanchored allow glob is skipped with a warning while looking permissive; the server segment must be glob-free. It *is* valid as a deny rule. A `mcp__` rule with parentheses is dropped entirely. Spike 003 §6. | 009, 016, 017, 020 |
 
 ## Still open before starting
 
@@ -311,7 +322,7 @@ Three are research deliverables — the spikes exist to answer them. The rest ne
 | --- | --- | --- |
 | Can an `http` hook block a `PreToolUse`, or is a `command` script required? | 005, 009, 020 | 002 |
 | What field correlates a hook payload to an orchestrator-started session? | 008, 009, 010 | 002 |
-| How is a per-role MCP server attached, and how does a tool call prove which session is calling? | 017, 018 | 016 |
+| ~~How is a per-role MCP server attached, and how does a tool call prove which session is calling?~~ **Answered** — spike 003 for the attachment, GLU-55 for the identity (landed 2026-10-12). | — | 016 |
 | Numbers with no measurement behind them yet: per-project agent cap, global memory floor, lock TTL, pause deadline. All ship as required config with no default, so each is chosen rather than inherited. | 015, 018, 028 | 015, 018, 028 |
 | Who owns which department by default — the design's own open question. Low impact until a second account arrives at step 9. | 019 | 019 |
 | Who pays for the tokens the verification tickets spend. | 011, 030 | 011 |

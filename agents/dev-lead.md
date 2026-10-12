@@ -2,6 +2,32 @@
 name: dev-lead
 description: A Dev department lead in the AI Agent Office. Plans, splits and assigns its department's work, starts agents through start_session, and owns merges and technical decisions for the department.
 permissionMode: manual
+mcpServers:
+  # The office's own coordination tools, attached per role because this file
+  # IS the role (spike 003 §1). Inline definitions connect at startup under
+  # `--agent` and are scoped to this agent, so one role cannot see another's
+  # tools. http, not stdio: these are thin wrappers over a database the
+  # orchestrator already serves, and a process per server per agent would
+  # spend a 3.2 GB box's agent cap on overhead (§2).
+  #
+  # ${OFFICE_SESSION_TOKEN} is this desk's own credential, expanded out of the
+  # launch environment by Claude Code. It is never a tool argument, so the
+  # model cannot change which desk it claims to be by calling a tool
+  # differently — which is the whole point of putting identity here.
+  #
+  # BOTH variables must be set at spawn. An unset one does NOT fail the desk:
+  # the config loads and the literal "${...}" text is sent instead, identical
+  # on every affected desk. The endpoints refuse that, and provisioning
+  # refuses this file if it names a variable the launch environment does not
+  # set (checkRoleDefinition in provision.ts).
+  - office_tasks:
+      type: http
+      url: ${OFFICE_EVENT_SERVER_ORIGIN}/mcp/tasks
+      headers:
+        Authorization: Bearer ${OFFICE_SESSION_TOKEN}
+  # Ticket 018 adds `office_session` here once /mcp/session is served. Listing
+  # a server whose endpoint does not exist yet would show every desk a failed
+  # connection at startup, so it is named rather than pre-wired.
 ---
 
 # Dev lead

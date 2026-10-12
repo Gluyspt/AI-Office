@@ -227,7 +227,7 @@ real happens.
 
 **One defect found and fixed, unrelated to any criterion.** `provision.ts` carried **two raw
 NUL bytes** — the composite map key in `mergeOfficeSettings` was written as a literal NUL
-rather than the ` ` escape. The runtime behaviour was correct and the suite passed, but
+rather than the `\0` escape. The runtime behaviour was correct and the suite passed, but
 ripgrep classifies the file as binary and **skips it**, so the whole 1339-line module was
 invisible to every `grep`/Grep search in the repo. `assertPermissionModeAllowed` is defined
 there and a search for it returned only the test file. That matters here specifically: the
@@ -281,3 +281,79 @@ The `su`-to-the-account half stays with `scripts/provision-user.sh`, which needs
 ships one identity per Linux account (`AI Office agent (agent1)` /
 `agent1@ai-office.invalid`) and says out loud in its docstring that this is an assumption. It
 is permanent in `git log`. GLU-49.
+
+## Reopened 2026-10-12 — MCP wiring, the allowlist, and the §3.3 trap
+
+Spike 003 named three changes that land in this ticket's files, and all three are now in. Reopened
+rather than spawning a follow-up because `provision.ts`, `agents/*.md` and
+`config/hooks/base.settings.json` are this ticket's permanently; see 008's matching section for the
+reasoning. **This closes 009's long-standing open question about the real `permissions.allow`
+contents** (the "empty allowlist" note in `## Decided` is now historical).
+
+### Scope added
+
+- `agents/dev-lead.md`, `agents/management-lead.md` — an `mcpServers:` block attaching
+  `office_tasks` over https, with identity in a `${OFFICE_SESSION_TOKEN}` header
+- `config/hooks/base.settings.json` — `permissions.allow` names the office's own servers
+- `packages/server/src/features/orchestrator/provision.ts` — `launchEnvironmentNames()`,
+  `checkRoleDefinition()`, `assertAllowRuleUsable()`, and the `invalid_role_definition` error kind
+- `packages/server/src/features/orchestrator/provision.test.ts` — 13 tests
+
+### Acceptance criteria
+
+- [x] Both role files attach the office's task server per role, through the role file's own
+      `mcpServers:` frontmatter — the attachment point spike 003 §1 chose, because the file *is* the
+      role and provisioning already installs it. No new launch flag, no change to `agentLaunchSpec`'s
+      argv.
+- [x] `permissions.allow` names `mcp__office_tasks__*` and `mcp__office_session__*` and nothing
+      else. MCP tool calls require approval, and in `manual` mode an unlisted `claim_task` raises a
+      `PermissionRequest` and parks the desk waiting for a human to approve every claim.
+- [x] **Provisioning refuses an allow rule that globs the server segment** (`mcp__*`) and one
+      containing parentheses. Both are documented Claude Code behaviour, both approve *nothing*, and
+      both look permissive — the expensive direction, because the symptom is every tool prompting
+      while the settings file reads as though it should not, sending whoever debugs it to the MCP
+      server. Checked for the template and for fragments, and only for `mcp__` rules: `Bash(git
+      push:*)` is a different grammar where the parentheses are how the rule works.
+- [x] **Provisioning refuses a role file referencing a launch variable nothing sets**, with the
+      known names in the message. This is the §3.3 trap caught at provisioning time: an unset
+      variable does *not* fail the desk — Claude Code loads the config and sends the literal
+      `${VAR}` text, identically on every affected desk, warning only in `claude mcp list` output
+      that nobody reads during an unattended spawn. The known-variable list is derived from a real
+      `agentLaunchSpec` plus `SESSION_TOKEN_ENV_VAR`, so adding a variable cannot leave it behind.
+      `${VAR:-default}` is allowed, because that is what a default is for.
+- [x] Only the frontmatter is scanned. The body is prose the model reads, where `${...}` is an
+      example — scanning it would refuse a role file for documenting this very trap.
+- [x] A role file's MCP url must be https, or a `${VAR}` that expands to one. The office decided
+      https on every endpoint including loopback, and this url carries the desk's session token.
+- [x] A role file with no `mcpServers` block **warns** rather than failing. A plain chat desk is a
+      legitimate configuration — step 1's spine ran that way for weeks — but from step 2 on it is far
+      more often a block lost in an edit, and the symptom is an agent with no tools to call and no
+      way to know why.
+- [x] The shipped role files are exercised by the check in a test, not merely assumed to pass it.
+
+### Decided
+
+**Server names use underscores: `office_tasks`, `office_session`.** Spike 003 §1's example wrote
+`office-tasks` while §6's allowlist recommendation wrote `mcp__office_tasks__*`, and the two cannot
+both be right: an allow rule's server segment must match the configured server name exactly and be
+glob-free, so a hyphen/underscore mismatch names a server that does not exist and every call prompts.
+Underscores win because the allowlist quote is the load-bearing half and reads consistently with tool
+names (`claim_task`).
+
+**`office_session` is in the allowlist but not yet in the role files.** An allow rule for a server
+that is not attached matches nothing and costs nothing; a role file naming an endpoint 018 has not
+served yet shows every desk a failed connection at startup. So the rule ships early and the
+attachment is named in a comment for 018, which appends its own entry to both role files.
+
+**`OFFICE_SESSION_TOKEN` is not set by `agentLaunchSpec`** — see 008's reopened section for why, and
+`agentLaunchSpec`'s docstring for the short version. This ticket's role-file check is what makes that
+split safe: it is the thing that would catch the spelling drifting apart.
+
+### Still open after this
+
+- The **git identity form** for agent accounts (GLU-49) — one shared office identity or one per
+  account. Unchanged by this work; `gitIdentityFor` still assumes one per account and says so.
+- Whether an **appended `mcpServers:` entry** should become a manifest exception like a
+  `loadXConfig()` section, so 018 (and later a graph server per project) can add one without
+  reopening this ticket each time. Flagged for a human; the cost of getting it wrong either way is
+  small.

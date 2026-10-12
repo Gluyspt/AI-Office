@@ -19,6 +19,8 @@ import {
   PROVISIONED_HOOK_EVENTS,
   agentLaunchSpec,
   assertAbsolutePosixPath,
+  checkRoleDefinition,
+  launchEnvironmentNames,
   assertPermissionModeAllowed,
   assertRoleName,
   defaultRepoRoot,
@@ -376,5 +378,155 @@ describe("the launch spec", () => {
     for (const permissionMode of Object.keys(FORBIDDEN_PERMISSION_MODES)) {
       expect(() => agentLaunchSpec({ ...input, permissionMode })).toThrow();
     }
+  });
+});
+
+
+// --- Role definitions: the launch variables they may reference -------------------
+//
+// GLU-55 / spike 003 §3.3. These are the tests for the trap that an UNSET
+// variable does not fail a desk: Claude Code loads the MCP config and sends
+// the literal "${VAR}" text as the credential, identically on every affected
+// desk, warning only in `claude mcp list` output. The office refuses that at
+// the endpoint, but refusing it HERE is what turns "this desk cannot claim
+// any task, hours later" into "provisioning said which variable".
+
+describe("the launch environment's variable names", () => {
+  it("includes the per-session token, which agentLaunchSpec does not set", () => {
+    const names = launchEnvironmentNames();
+    expect(names).toContain("OFFICE_SESSION_TOKEN");
+    // Derived from a real spec, so a variable added to agentLaunchSpec cannot
+    // leave the role-file check behind.
+    expect(names).toContain("NODE_EXTRA_CA_CERTS");
+    expect(names).toContain("OFFICE_EVENT_SERVER_ORIGIN");
+    expect(names).toContain("OFFICE_HOOK_INGEST_TOKEN");
+  });
+});
+
+describe("checkRoleDefinition", () => {
+  const withFrontmatter = (body: string): string =>
+    ["---", "name: dev-lead", body, "---", "", "# Dev lead", ""].join("\n");
+
+  it("accepts the role files this repo actually ships", async () => {
+    // The one assertion here that a unit test cannot fake: the shipped files
+    // must pass the check that provisioning will run on them.
+    const { readFile } = await import("node:fs/promises");
+    const nodePath = (await import("node:path")).default;
+    for (const role of AGENT_ROLES) {
+      const text = await readFile(nodePath.join(defaultRepoRoot(), "agents", `${role}.md`), "utf8");
+      const report = checkRoleDefinition(role, text);
+      expect(report.declaresMcpServers).toBe(true);
+      expect(report.variables).toContain("OFFICE_SESSION_TOKEN");
+      expect(report.variables).toContain("OFFICE_EVENT_SERVER_ORIGIN");
+    }
+  });
+
+  it("refuses a variable the launch environment does not set", () => {
+    const text = withFrontmatter(
+      [
+        "mcpServers:",
+        "  - office_tasks:",
+        "      type: http",
+        "      url: ${OFFICE_EVENT_SERVER_ORIGIN}/mcp/tasks",
+        "      headers:",
+        "        Authorization: Bearer ${OFFICE_SESSION_TOKN}",
+      ].join("\n"),
+    );
+    expect(() => checkRoleDefinition("dev-lead", text)).toThrow(/OFFICE_SESSION_TOKN/);
+    // And it says what the launch environment does provide, because the
+    // repair is choosing one of those names.
+    expect(() => checkRoleDefinition("dev-lead", text)).toThrow(/OFFICE_SESSION_TOKEN/);
+  });
+
+  it("allows the ${VAR:-default} form for an unset variable", () => {
+    const text = withFrontmatter(
+      ["mcpServers:", "  - probe:", "      type: http", "      url: ${SOMETHING:-https://x}"].join("\n"),
+    );
+    expect(() => checkRoleDefinition("dev-lead", text)).not.toThrow();
+  });
+
+  it("ignores ${...} in the body, where it is prose", () => {
+    const text = [
+      "---",
+      "name: dev-lead",
+      "---",
+      "",
+      "Never write ${NOT_A_REAL_VARIABLE} in your MCP config.",
+      "",
+    ].join("\n");
+    expect(() => checkRoleDefinition("dev-lead", text)).not.toThrow();
+  });
+
+  it("refuses a file with no frontmatter at all", () => {
+    expect(() => checkRoleDefinition("dev-lead", "# Dev lead\n\nprose only\n")).toThrow(
+      /frontmatter/,
+    );
+  });
+
+  it("refuses a plain-http MCP url", () => {
+    const text = withFrontmatter(
+      ["mcpServers:", "  - office_tasks:", "      type: http", "      url: http://127.0.0.1:4000/mcp/tasks"].join("\n"),
+    );
+    // https everywhere including loopback — this url would carry the desk's
+    // session token in clear text.
+    expect(() => checkRoleDefinition("dev-lead", text)).toThrow(/https/);
+  });
+
+  it("reports a role file with no mcpServers rather than throwing", () => {
+    const report = checkRoleDefinition("dev-lead", withFrontmatter("permissionMode: manual"));
+    expect(report.declaresMcpServers).toBe(false);
+  });
+});
+
+// --- permissions.allow: the two rules that approve nothing ----------------------
+
+describe("the MCP allowlist", () => {
+  const base = (allow: readonly string[]): Record<string, unknown> => ({
+    permissions: { defaultMode: "manual", allow },
+    hooks: {},
+  });
+
+  it("carries the office's own servers through the merge", () => {
+    const settings = mergeOfficeSettings(
+      { base: base(["mcp__office_tasks__*", "mcp__office_session__*"]), fragments: [] },
+    );
+    expect(settings.permissions.allow).toEqual([
+      "mcp__office_session__*",
+      "mcp__office_tasks__*",
+    ]);
+  });
+
+  it("refuses mcp__* , which is skipped at load and approves nothing", () => {
+    // The expensive direction: it LOOKS permissive, so the symptom is every
+    // tool prompting and someone debugging the MCP server.
+    expect(() => mergeOfficeSettings({ base: base(["mcp__*"]), fragments: [] })).toThrow(
+      /globs the SERVER segment/,
+    );
+  });
+
+  it("refuses a mcp__ rule with parentheses, which is dropped entirely", () => {
+    expect(() =>
+      mergeOfficeSettings(
+        { base: base(["mcp__office_tasks__claim_task(task_id:*)"]), fragments: [] },
+      ),
+    ).toThrow(/parentheses/);
+  });
+
+  it("leaves non-MCP rules alone, where parentheses are the grammar", () => {
+    const settings = mergeOfficeSettings(
+      { base: base(["Bash(git push:*)", "Read(//srv/office/**)"]), fragments: [] },
+    );
+    expect(settings.permissions.allow).toContain("Bash(git push:*)");
+  });
+
+  it("checks a fragment's rules too, not just the template's", () => {
+    expect(() =>
+      mergeOfficeSettings(
+        {
+          base: base([]),
+          fragments: [{ name: "x.json", json: { permissions: { allow: ["mcp__*"] } } }],
+        },
+      ),
+    ).toThrow(/globs the SERVER segment/);
   });
 });

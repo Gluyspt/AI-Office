@@ -227,6 +227,15 @@ async function makeTask(): Promise<TaskId> {
   return task.id;
 }
 
+
+/** The DATABASE's clock, in epoch milliseconds. See the note at its one use. */
+async function dbNowMs(): Promise<number> {
+  const { rows } = await pool.query<{ ms: string }>(
+    "select (extract(epoch from clock_timestamp()) * 1000)::bigint::text as ms",
+  );
+  return Number(rows[0]!.ms);
+}
+
 async function stateOf(taskId: TaskId): Promise<TaskState> {
   const result = await pool.query<{ state: TaskState }>("select state from tasks where id = $1", [
     taskId,
@@ -343,7 +352,23 @@ describe("transition() against the database", () => {
 
   it("writes an audit row with actor, kind, reason and timestamp", async () => {
     const taskId = await makeTask();
-    const before = Date.now();
+    // THE REFERENCE TIME COMES FROM THE DATABASE, not from Date.now(), and
+    // that is the whole point of this line.
+    //
+    // `occurred_at` is written by Postgres. Comparing it to the test
+    // process's clock compares TWO clocks, and on the Windows dev host the
+    // dev Postgres runs inside the WSL2 VM, whose clock was measured
+    // 2026-10-12 sitting a steady **809 ms behind** the host's (12 samples,
+    // round trip <= 3 ms). This assertion used to allow a 1000 ms tolerance,
+    // which meant it passed only while the drift stayed under a second: it
+    // failed once in four full-suite runs that day, by 224 ms, i.e. at a
+    // drift of ~1.22 s. A test that fails when two machines disagree about
+    // the time is not testing the code.
+    //
+    // Asking the database for both sides keeps what the assertion is FOR —
+    // the audit row's timestamp is not older than the moment the transition
+    // started — and makes it immune to a drift that will only grow.
+    const before = await dbNowMs();
     const { change, task } = await transition({
       taskId,
       to: "pending",
@@ -354,7 +379,7 @@ describe("transition() against the database", () => {
     expect(change.actor).toBe("gluy");
     expect(change.actorKind).toBe("human");
     expect(change.reason).toBe("start working");
-    expect(change.occurredAt.getTime()).toBeGreaterThanOrEqual(before - 1000);
+    expect(change.occurredAt.getTime()).toBeGreaterThanOrEqual(before);
     // The audit row's timestamp IS the task's state_entered_at - which is
     // what lets the card render "pending / 2d" without reading history.
     expect(change.occurredAt.getTime()).toBe(task.stateEnteredAt.getTime());
