@@ -235,6 +235,69 @@ export function platformEdges(options: ScanOptions = {}): PlatformEdge[] {
   return edges.sort((a, b) => (a.from + a.to).localeCompare(b.from + b.to));
 }
 
+/**
+ * Imports that reach INTO a platform module from outside it.
+ *
+ * Added 2026-10-13 (033's dated section, driven by 034). The platform
+ * exemption was written loosely enough to read as "platform has no private
+ * files", and `platform/README.md` said exactly that. That cannot be right
+ * for the DAS: a caller importing `das/das.ts` gets the raw pool, and a grant
+ * becomes advisory. So the exemption is narrower than it first looked —
+ *
+ *   - platform needs no *permission* to be depended on (no declared
+ *     dependency, no contract on the caller's side), and
+ *   - platform may import nothing from `features/`, but
+ *   - a platform module's internals are still private. `contract.ts` is the
+ *     entry point, exactly as for a feature.
+ *
+ * A module with no `contract.ts` is not yet subject to this — `platform/das/`
+ * has one, a future `platform/x/README.md` does not.
+ */
+export function platformInternalEdges(options: ScanOptions = {}): PlatformEdge[] {
+  const platform = options.platformDir ?? platformRoot;
+  const features = options.featuresDir ?? featuresRoot;
+  const edges: PlatformEdge[] = [];
+
+  // Every file that is NOT inside the platform module it imports from.
+  const outsiders = [...listSourceFiles(features), ...listSourceFiles(platform)];
+
+  for (const file of outsiders) {
+    for (const spec of extractSpecifiers(readFileSync(file, "utf8"))) {
+      const resolved = resolveSpecifier(file, spec);
+      if (resolved === null) continue;
+
+      const rel = path.relative(platform, resolved);
+      if (rel.startsWith("..") || path.isAbsolute(rel)) continue;
+      const module = rel.split(path.sep)[0];
+      if (module === undefined) continue;
+
+      // Inside the same platform module: private is private to outsiders.
+      const fromRel = path.relative(platform, file);
+      const fromModule =
+        fromRel.startsWith("..") || path.isAbsolute(fromRel) ? null : fromRel.split(path.sep)[0];
+      if (fromModule === module) continue;
+
+      // A module that publishes no contract yet cannot be reached "wrongly".
+      const moduleContract = path.join(platform, module, CONTRACT_FILE);
+      try {
+        if (!statSync(moduleContract).isFile()) continue;
+      } catch {
+        continue;
+      }
+
+      if (resolved !== moduleContract) {
+        edges.push({
+          from: toPosixRelative(file),
+          to: toPosixRelative(resolved),
+          toFeature: module,
+        });
+      }
+    }
+  }
+
+  return edges.sort((a, b) => (a.from + a.to).localeCompare(b.from + b.to));
+}
+
 /** `features/<name>/contract.ts` for every feature that has published one. */
 export function contractFiles(options: ScanOptions = {}): string[] {
   const root = options.featuresDir ?? featuresRoot;

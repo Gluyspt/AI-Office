@@ -27,6 +27,7 @@ The design says steps 1–3 carry the risk: if the chat bridge doesn't work, not
 | File-based routes in `packages/web/src/routes/` | 022 | add a page without editing a route table |
 | MCP servers mounted by `mountMcpServer` from `features/mcp/protocol.ts` | 017 | add an MCP server as one route file, with no protocol code |
 | A service's public surface is `features/*/contract.ts`; everything else in the folder is private, enforced by `tests/boundaries/` | 033 | work inside a feature without any other feature's agent being affected |
+| The same for `platform/*/contract.ts`, once that module has published one. Platform is exempt from needing *permission* and a declared dependency — not from having private files | 033 (2026-10-13) | use the DAS without being handed the raw pool |
 
 **The contract convention is what makes one-file-one-ticket hold under agents rather than humans.**
 A rule about *which files a ticket may edit* only helps if the files a ticket needs are predictable,
@@ -344,7 +345,8 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `tests/ui/board.test.tsx`, `tests/ui/chat.test.tsx` | 030 |
 | `packages/server/src/platform/README.md`, `tests/boundaries/contracts.test.ts`, `declared-deps.test.ts`, `scan.ts`, `crossings.ts`, `baseline.ts`, `package.json`, `tsconfig.json`, `tests/boundaries/README.md` | 033 (`scan.ts`, `baseline.ts`, `package.json`, `tsconfig.json` added during implementation — see the ticket; `baseline.ts` and `crossings.ts` are shrink-only, above) |
 | `pnpm-workspace.yaml` — the `tests/*` glob | 001 (reopened 2026-10-12 for 033) |
-| `packages/server/src/platform/das/contract.ts`, `das.ts`, `grant.ts` (+ their tests) | 034 |
+| `packages/server/src/platform/das/contract.ts`, `das.ts`, `grant.ts` (+ `das.test.ts`, `grant.test.ts`, `tx.test.ts`) | 034 |
+| `tests/boundaries/scan.ts` + `contracts.test.ts` — the platform-internals rule | 033 (dated section 2026-10-13, driven by 034) |
 | `db/migrations/0016_service_roles.sql`, `packages/server/src/platform/das/role.ts`, `tests/boundaries/grants.test.ts` | 035 |
 | `packages/server/src/platform/das/lanes.ts`, `saturation.ts` (+ tests) | 036 |
 | `packages/server/src/platform/events/deadline.ts`, `slow-handlers.ts` (+ tests) | 037 |

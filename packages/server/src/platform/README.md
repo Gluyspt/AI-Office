@@ -13,9 +13,23 @@ The import census that started this found 33 cross-feature edges, and **14 of th
 infrastructure.
 
 Nothing is decoupled by making a feature ask permission to publish an event. So platform is exempt
-from the contract rule that services obey — anyone may import `platform/das` directly, no
-`contract.ts` required for the privilege — and in exchange it is bound by a stricter one: it may
-depend on nothing above it.
+from one half of the contract rule — a caller needs no permission and declares no dependency to use
+it — and in exchange it is bound by a stricter one: it may depend on nothing above it.
+
+**Corrected 2026-10-13, while building 034.** This section first said "anyone may import
+`platform/das` directly, no `contract.ts` required". That is wrong, and 034 is where it showed:
+importing `das/das.ts` hands the caller the raw pool, which makes a grant advisory rather than
+enforced. The exemption is narrower than it looked:
+
+| | Feature | Platform |
+| --- | --- | --- |
+| Reachable only via `contract.ts` | yes | **yes** |
+| Caller must declare the dependency | yes | no |
+| May import a feature | via its contract | **never** |
+
+A platform module that has not published a `contract.ts` yet is not policed — several arrive before
+their contract does, and refusing those imports would block the retrofit at the one point it has to
+move incrementally.
 
 That one-way rule is what makes platform extractable by construction, and it is a single line of
 test rather than a convention anyone has to remember.

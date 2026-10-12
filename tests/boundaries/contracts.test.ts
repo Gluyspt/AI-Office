@@ -1,18 +1,24 @@
 // The boundary rules, enforced.
 //
-// Ticket 033. Three rules live here:
+// Ticket 033, plus a dated section of 2026-10-13. Four rules live here:
 //
 //   1. A feature may import another feature only through its contract.
-//   2. Platform may be imported by anyone and may import no feature.
-//   3. A contract's surface carries serialisable values, except the four
+//   2. Platform may import no feature.
+//   3. A platform module's internals are private too — `contract.ts` is the
+//      entry point, exactly as for a feature. Added 2026-10-13, driven by
+//      034: importing `das/das.ts` hands the caller the raw pool and makes a
+//      grant advisory rather than enforced. What platform is exempt from is
+//      needing permission and a declared dependency, not from having private
+//      files.
+//   4. A contract's surface carries serialisable values, except the four
 //      enumerated crossings.
 //
 // Every one is checked against the real tree AND against a scratch fixture.
 // The fixture half is not padding: a rule that cannot be shown to fail is a
-// rule nobody should trust, and all three of these currently have nothing to
-// find in the real tree — there are no contracts yet, and `platform/` holds
-// one README. Without the fixtures this file would be 200 lines of green that
-// proves nothing.
+// rule nobody should trust, and three of these have little or nothing to find
+// in the real tree yet — only `das` has published a contract. Without the
+// fixtures this file would be a few hundred lines of green that proves
+// nothing.
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -25,6 +31,7 @@ import {
   edgeKey,
   extractSpecifiers,
   platformEdges,
+  platformInternalEdges,
   stripComments,
 } from "./scan.ts";
 import { readFileSync } from "node:fs";
@@ -199,6 +206,67 @@ describe("the platform rule", () => {
       edges.length === 0
         ? ""
         : `Platform may be called by everyone and may call nobody. These break that:\n${edges
+            .map((e) => `  ${edgeKey(e)}`)
+            .join("\n")}`,
+    ).toEqual([]);
+  });
+
+  // --- added 2026-10-13, 033's dated section, driven by 034 ------------------
+  //
+  // The exemption was written loosely enough to read as "platform has no
+  // private files", and platform/README.md said so outright. That is wrong
+  // for the DAS: importing `das/das.ts` hands the caller the raw pool and
+  // makes a grant advisory. Platform needs no permission to be depended on;
+  // its internals are still private.
+
+  it("refuses a file outside a platform module importing that module's internals", () => {
+    const { features, platform } = scratchServerTree();
+    writePlatformFile(platform, "das/contract.ts", `export const x = 1;\n`);
+    writePlatformFile(platform, "das/das.ts", `export const pool = {};\n`);
+    writeFeatureFile(features, "alpha", "uses.ts", `import { pool } from "../../platform/das/das.ts";\n`);
+
+    const edges = platformInternalEdges({ featuresDir: features, platformDir: platform });
+
+    expect(edges).toHaveLength(1);
+    expect(edges[0]!.from).toContain("alpha/uses.ts");
+    expect(edges[0]!.to).toContain("das/das.ts");
+  });
+
+  it("allows a feature importing a platform module's contract", () => {
+    const { features, platform } = scratchServerTree();
+    writePlatformFile(platform, "das/contract.ts", `export const x = 1;\n`);
+    writeFeatureFile(features, "alpha", "uses.ts", `import { x } from "../../platform/das/contract.ts";\n`);
+
+    expect(platformInternalEdges({ featuresDir: features, platformDir: platform })).toEqual([]);
+  });
+
+  it("allows a platform module importing its own internals", () => {
+    const { features, platform } = scratchServerTree();
+    writePlatformFile(platform, "das/contract.ts", `export const x = 1;\n`);
+    writePlatformFile(platform, "das/das.ts", `import { x } from "./contract.ts";\nimport "./grant.ts";\n`);
+    writePlatformFile(platform, "das/grant.ts", `export const y = 2;\n`);
+
+    expect(platformInternalEdges({ featuresDir: features, platformDir: platform })).toEqual([]);
+  });
+
+  it("does not police a platform module that publishes no contract yet", () => {
+    const { features, platform } = scratchServerTree();
+    writePlatformFile(platform, "events/bus.ts", `export const x = 1;\n`);
+    writeFeatureFile(features, "alpha", "uses.ts", `import { x } from "../../platform/events/bus.ts";\n`);
+
+    // Several modules arrive before their contract does; refusing an import
+    // of a module that has published nothing would block the retrofit at the
+    // one moment it needs to move incrementally.
+    expect(platformInternalEdges({ featuresDir: features, platformDir: platform })).toEqual([]);
+  });
+
+  it("holds in the real tree: nothing reaches into a platform module's internals", () => {
+    const edges = platformInternalEdges();
+    expect(
+      edges,
+      edges.length === 0
+        ? ""
+        : `A platform module's internals are private; import its contract.ts:\n${edges
             .map((e) => `  ${edgeKey(e)}`)
             .join("\n")}`,
     ).toEqual([]);
