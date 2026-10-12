@@ -1,6 +1,11 @@
-# Implementation tickets — build steps 1–3
+# Implementation tickets — build steps 1–3, plus service boundaries
 
-Thirty-one tickets covering the first three build steps of [the system design](../ai-agent-office-design.md):
+Forty tickets. Thirty-two cover the first three build steps of
+[the system design](../ai-agent-office-design.md); eight (033–040) are cross-cutting and come from
+[the service boundaries design](../service-boundaries-design.md), which answers "make everything
+microservices" for a 3.2 GB box.
+
+The three build steps:
 
 1. **Spine** — one project, Management and one Dev lead as tmux sessions, replies via the Stop hook, interrupt working.
 2. **Coordination** — task board with draft state and dependencies, planning flow, ownership registry, `claim_task` / `complete_task`, the PreToolUse guard.
@@ -21,6 +26,14 @@ The design says steps 1–3 carry the risk: if the chat bridge doesn't work, not
 | UI overlays collected by `import.meta.glob` from `src/features/*/overlay.tsx` | 022 | add a slide-in panel without editing the app shell |
 | File-based routes in `packages/web/src/routes/` | 022 | add a page without editing a route table |
 | MCP servers mounted by `mountMcpServer` from `features/mcp/protocol.ts` | 017 | add an MCP server as one route file, with no protocol code |
+| A service's public surface is `features/*/contract.ts`; everything else in the folder is private, enforced by `tests/boundaries/` | 033 | work inside a feature without any other feature's agent being affected |
+
+**The contract convention is what makes one-file-one-ticket hold under agents rather than humans.**
+A rule about *which files a ticket may edit* only helps if the files a ticket needs are predictable,
+and they are not while any feature can import any other feature's internals. 033 adds the import
+rule and the test; see [the boundaries design](../service-boundaries-design.md) §4. It lands with a
+baseline of today's 33 cross-feature edges, and the retrofit tickets delete baseline entries — so
+the baseline is the only list here allowed to shrink only.
 
 **Layout: one folder per feature, plus `core/`.** The server is organised as vertical slices —
 `packages/server/src/features/<name>/` holds that feature's modules, its `routes/` and its
@@ -93,8 +106,21 @@ the ownership map with the date it was added.
 | [029](029-stop-controls-ui.md) | Pause, emergency stop, and resume UI | 3 | dev | sonnet | 018, 020, 022, 028 |
 | [031](031-task-detail-page.md) | Task detail page (minimal) | 3 | dev | sonnet | 013, 024, 026 |
 | [030](030-step-3-acceptance-pass.md) | Step 3 acceptance pass | 3 | qa | sonnet | 025, 026, 027, 029, 031 |
+| [033](033-service-contracts-and-boundary-tests.md) | Service contracts and the boundary test | B | dev | opus | — |
+| [034](034-das-data-access-service.md) | DAS: the data access service | B | dev | opus | 033 |
+| [035](035-per-service-postgres-roles.md) | Per-service Postgres roles and grants | B | dev | opus | 034 |
+| [036](036-das-lanes-and-the-hot-path.md) | DAS lanes: reserved connections for the hot path | B | dev | opus | 034 |
+| [037](037-handler-deadlines.md) | Handler deadlines: a hung handler must not stall ingest | B | dev | sonnet | 033 |
+| [038](038-extraction-readiness.md) | Extraction readiness: the service graph and its test | B | dev | opus | 033, 034 |
+| [039](039-identity-as-platform.md) | Identity as platform | B | dev | opus | 033 |
+| [040](040-control-service-split.md) | Control service: its own process, its own privilege | B | dev | opus | 034, 038, 039 |
 
-**By step:** 11 / 11 / 10. **By department:** dev 26, research 3, qa 3. **By model:** opus 17, sonnet 15.
+**By step:** 11 / 11 / 10 / 8 boundaries. **By department:** dev 34, research 3, qa 3.
+**By model:** opus 24, sonnet 16.
+
+**Step "B" is not a fourth build step.** The design's step 4 is the git workflow. The boundaries
+tickets are cross-cutting: they change who may call whom, not what the office does, and 033 is
+startable today alongside 018.
 
 Tickets 031 and 032 were added after the decisions below, so they sit out of numeric order — see the execution order under the graph.
 
@@ -179,7 +205,27 @@ flowchart TD
     T029 --> T030
     T031 --> T030
   end
+
+  subgraph SB["Boundaries — services, contracts, the DAS"]
+    T033[033 contracts + test] --> T034[034 DAS]
+    T033 --> T037[037 handler deadlines]
+    T033 --> T039[039 identity to platform]
+    T034 --> T035[035 postgres roles]
+    T034 --> T036[036 DAS lanes]
+    T033 --> T038[038 extraction readiness]
+    T034 --> T038
+    T034 --> T040[040 control split]
+    T038 --> T040
+    T039 --> T040
+  end
 ```
+
+**Boundaries critical path** (4 deep): 033 → 034 → 038 → 040. It is independent of the step 1–3
+graph: 033 is startable today, in parallel with 018. What couples the two sets is the *retrofit* —
+pointing existing features at the DAS and at each other's contracts — and that lands as dated
+sections on the tickets that own those files, not as new tickets. The order, and which reopenings
+are high-risk, is in
+[the boundaries design](../service-boundaries-design.md) §7.
 
 **Critical path** (10 deep): 001 → 004 → 005 → 008 → 009 → 016 → 018 → 019 → 025 → 030. Auto-spawn on promotion put the MCP wiring spike and the session server on this path — 016 now gates the two tickets that turn Start working into running agents.
 
@@ -276,10 +322,25 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `tests/spine/harness.ts`, `tests/spine/spine.e2e.test.ts`, `tests/README.md` | 011 |
 | `tests/coordination/claim-complete.test.ts`, `dependencies.test.ts`, `guard.test.ts`, `planning.test.ts` | 021 |
 | `tests/ui/board.test.tsx`, `tests/ui/chat.test.tsx` | 030 |
+| `packages/server/src/platform/README.md`, `tests/boundaries/contracts.test.ts`, `declared-deps.test.ts`, `crossings.ts`, `tests/boundaries/README.md` | 033 |
+| `packages/server/src/platform/das/contract.ts`, `das.ts`, `grant.ts` (+ their tests) | 034 |
+| `db/migrations/0016_service_roles.sql`, `packages/server/src/platform/das/role.ts`, `tests/boundaries/grants.test.ts` | 035 |
+| `packages/server/src/platform/das/lanes.ts`, `saturation.ts` (+ tests) | 036 |
+| `packages/server/src/platform/events/deadline.ts`, `slow-handlers.ts` (+ tests) | 037 |
+| `tests/boundaries/extractable.test.ts`, `shared-state.ts`, `scripts/service-graph.mjs`, `docs/service-graph.md` | 038 |
+| `packages/server/src/platform/identity/contract.ts`, `token.ts`, `authenticate.ts` (+ tests) | 039 |
+| `packages/control/` (package.json, tsconfig.json, src/index.ts, src/rpc-server.ts, src/health.ts), `packages/server/src/platform/rpc/contract.ts`, `client.ts`, `server.ts`, `deploy/host/office-control.service`, `docs/runbooks/control-service.md` | 040 |
+| `docs/service-boundaries-design.md` | — (design, unowned, like `docs/ai-agent-office-design.md`) |
+
+**Every boundaries ticket owns only files that do not exist yet.** That is deliberate: the retrofit
+— pointing `tasks/repo.ts` at the DAS, moving `session-auth.ts` into `platform/identity/`, deleting
+`core/db/pool.ts` — edits files 004, 005, 008, 010, 013, 015, 017, 020 and 028 own permanently, so
+it lands as dated sections on those tickets under the reopening rule above. The sequence and the
+risk of each is in [the boundaries design](../service-boundaries-design.md) §7.
 
 ## Decisions made
 
-Thirty-one questions the design left open have been settled and written into the tickets. Recorded here because several change behaviour the design describes differently.
+Thirty-seven questions the design left open have been settled and written into the tickets. Recorded here because several change behaviour the design describes differently.
 
 | Decision | Lands in |
 | --- | --- |
@@ -314,6 +375,13 @@ Thirty-one questions the design left open have been settled and written into the
 | **The office needs a per-SESSION secret, and 008 must mint it. LANDED 2026-10-12 (GLU-55).** An account token cannot distinguish desks, because one Linux account hosts several by design — so `claim_task`'s "checks owner match" would silently degrade to "same teammate". `sessions.token_hash` holds sha-256 of a token minted in `startSession` and carried to the pane as `OFFICE_SESSION_TOKEN`; `authenticateSessionToken` resolves it back to one desk. **Validity is derived from the session's status, not a `revoked_at` flag** — a revocation column is a second source of truth four call sites must remember to write, and forgetting one leaves a dead desk able to claim work. Spike 003 §3.2. | 008, 009, 017, 018 |
 | **An MCP credential that still looks like `${...}` must be refused. LANDED 2026-10-12** — `looksUnexpanded` in `session-token.ts`, refused with its own reason naming the launch environment, and 009's provisioning now also refuses a role file naming a variable the launch environment does not set. An unset variable does NOT fail the server: the config loads with the literal placeholder, the warning goes only to `claude mcp list`, and every desk then presents the same string as its identity. The `NODE_EXTRA_CA_CERTS` failure shape again — works perfectly, silently wrong. Spike 003 §3.3. | 017, 018 |
 | **MCP tool calls need pre-approval, so 009's empty allowlist blocks every task tool. LANDED 2026-10-12** — the allowlist now names `mcp__office_tasks__*` and `mcp__office_session__*`, server names settled as UNDERSCORES (§1's example said `office-tasks`, §6's rule said `office_tasks`, and a mismatch names a server that does not exist), and provisioning refuses both unusable rule shapes. In `manual` mode an unlisted `claim_task` prompts and parks the desk. 009's base settings must allow `mcp__office_tasks__*` and `mcp__office_session__*`. **`"mcp__*"` as an ALLOW rule silently approves nothing** — an unanchored allow glob is skipped with a warning while looking permissive; the server segment must be glob-free. It *is* valid as a deny rule. A `mcp__` rule with parentheses is dropped entirely. Spike 003 §6. | 009, 016, 017, 020 |
+
+| **"Make everything microservices" is answered as contracted modules in ONE process.** Asked 2026-10-12. A process per feature costs ~650 MB of a 3.2 GB box — about two fewer desks, and desks are the product — adds a network hop to the PreToolUse guard, which blocks a live agent mid-tool-call, and turns `claim_task` into a saga. So a *service* is a module behind `features/*/contract.ts`, enforced by a test. This buys the whole of the agent-parallel-ownership driver and **none** of independent deploy, which is stated plainly rather than implied: that one needs a process, and 040 makes it once where it pays. | 033–040 |
+| **The DAS owns access; features own their SQL.** A data access service that owned every feature's queries would be the one global edit surface in a system whose coordination model is "declare your file scope and overlapping work is refused" — the ownership registry would refuse constantly and the office would serialise. So the DAS owns the pool, transaction scope, grants, lanes and timeouts; `tasks/repo.ts` and friends keep their own SQL. The data boundary must be a boundary, not a bottleneck. | 034 |
+| **Service grants are enforced by Postgres roles, not only by a lint.** One `NOLOGIN` role per service, real `GRANT`s, and `SET LOCAL ROLE` on checkout — `LOCAL`, so a pooled connection cannot leak one service's role into the next checkout. A CI check on declared tables is defeated by dynamic SQL and says nothing on the day a service connects from its own process; it is kept as the *error message*, not the enforcement. | 035 |
+| **`tasks` and `locks` are one deployment unit, and the transaction handle is the single legal boundary crossing.** `claim_task` hands one `PoolClient` across the two features inside one transaction, and 017's header records what breaks without it. So the two get separate contracts and separate grants but cannot become separate processes until a claim is a saga. Written into the boundary test as an enumerated exception list with one entry, which is only allowed to shrink. | 034, 038 |
+| **Platform may be called by everyone and calls nobody — so identity is platform.** `events`, `das`, `mcp` and `identity` are infrastructure, not services; requiring a contract to publish an event buys nothing. The rule fails exactly once against the tree: `mcp/protocol.ts` imports `session-auth.ts` out of the sudo-holding service, which would put a network hop into every MCP tool call once `control` is split. | 033, 039 |
+| **The pool is laned, and the guard gets a reservation.** A found defect, not a refactor: one pool with one `max` means a board query storm or a long `planning` transaction can hold every connection while the PreToolUse guard — a live agent on a ~2 s fail-open budget — waits for one. Two lanes (`hot` for guard and ingest, `general` for the rest), a reservation `general` can never consume, and an immediate refusal rather than a queue on the hot lane, because waiting 1.9 s to then fail open is strictly worse. | 036 |
 
 ## Still open before starting
 
