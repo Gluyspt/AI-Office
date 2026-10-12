@@ -103,12 +103,14 @@ process is the microservices tax this whole design exists to avoid paying twice.
       stricter and will annoy somebody mid-refactor; a hook can be skipped. Leaning: fail the suite,
       because this repo's convention is that conventions are verifiable, and the regeneration is one
       command.
-- [ ] What counts as serialisable at the boundary — JSON, or structured-clone? `Date` and `Map`
-      survive structured clone and not JSON, and `tasks`' records carry `Date`s today
-      (`receivedAt`, `acquired_at`). If the eventual transport is HTTP, the answer is JSON and the
-      records need explicit serialisation; if it is a worker thread, structured clone is free.
-      **This needs deciding before 040 picks a transport**, and it is a bigger decision than it
-      looks.
+- [x] ~~What counts as serialisable at the boundary — JSON, or structured-clone?~~ **Answered
+      2026-10-12: one shared serialiser, with a round-trip test over every contract type.** The
+      transport is loopback HTTPS (040), so JSON is what the wire carries and a `Date` comes back a
+      string unless something converts it. One converter rather than per-type codecs, because the
+      failure being guarded against is *a field added later by someone who has not read this* — and
+      only a test that enumerates every contract type catches that, in CI, rather than in front of
+      an agent. This ticket's `extractable.test.ts` takes it as the definition of "serialisable";
+      040 builds the converter it implies.
 - [ ] Should the extractability verdict live in the contract file (near the code, splits cleanly) or
       in one declaration file (reviewable in one place, but a file every ticket edits)? Leaning the
       contract file, consistent with 033's dependency declarations and for the same reason.

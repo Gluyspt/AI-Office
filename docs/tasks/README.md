@@ -348,7 +348,7 @@ risk of each is in [the boundaries design](../service-boundaries-design.md) §7.
 
 ## Decisions made
 
-Forty-five questions the design left open have been settled and written into the tickets. Recorded here because several change behaviour the design describes differently.
+Forty-six questions the design left open have been settled and written into the tickets. Recorded here because several change behaviour the design describes differently.
 
 | Decision | Lands in |
 | --- | --- |
@@ -401,6 +401,8 @@ Forty-five questions the design left open have been settled and written into the
 | **An `office_migrator` role runs migrations; the server's role cannot.** Decided 2026-10-12, on one principle: the layer that enforces grants must not also be able to grant. `office_migrator` holds `CREATE` and is used only by `pnpm migrate`; the credential must never reach the server's environment, and `provision-host.sh` (unowned, run by `rtd`) gains the role's creation — so this crosses a host boundary as well as a code one. Unblocks 035. | 035, 007 |
 | **`@office/shared` is for pure code and ids only.** Decided 2026-10-12. `ids.ts` stays, `locks/overlap.ts` moves in (a pure function over two patterns, owned by nobody), and every *record* type moves to its owning contract — `TaskRecord` to `tasks`, `FileLockRecord` to `locks`, `ChatMessage` to `chat`. Without the rule, `shared` becomes the new god-module by accident: the one package every ticket edits, which is the failure the contract convention was adopted to prevent. The nine files there are re-homed through the retrofit, not in one sweep. | 033, 041, and the retrofit |
 | **The web app gets the same contract rule — ticket 041, after 033.** Decided 2026-10-12. The UI is the half that is mostly unbuilt (four step-3 tickets open, and every later step adds pages), so it is where several agents will collide; and the rule is nearly free because `packages/web` already has the overlay and file-route conventions. Not folded into 033, whose tests need a second traversal root and a different notion of "service" — a UI feature has no grant, no lane and no transaction. | 041 |
+
+| **One shared serialiser across the RPC boundary, with a round-trip test over every contract type.** Decided 2026-10-12, not per-type codecs. The transport is loopback HTTPS, so JSON is what the wire carries and a `Date` returns as a string unless something converts it — and records are full of them (`expires_at`, `acquired_at`, `receivedAt`, `started_at`). What decided it is the *second* mistake, not the first: a forgotten codec fails at runtime in front of an agent, while a missing entry in an enumerating test fails in CI. The failure prevented is `file_locks.expires_at` crossing as a string and the sweeper's expiry comparison still running — comparing a string, sometimes right by accident. The `NODE_EXTRA_CA_CERTS` shape: works perfectly, silently wrong. | 038, 040 |
 
 ## Still open before starting
 

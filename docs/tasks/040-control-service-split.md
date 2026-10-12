@@ -140,6 +140,11 @@ restarts, with the web app still up to show it.
       the split does not land.
 - [ ] A resumed task's lock TTL is restarted in the same commit as its transition, across the new
       boundary — `resume.ts`'s stated reason, re-verified rather than assumed to survive the move.
+- [ ] **Every contract type round-trips through the serialiser unchanged** — `Date` in, `Date` out —
+      asserted type by type, with one deliberately broken case proving the test can actually fail.
+- [ ] **A contract type carrying a field the serialiser does not handle fails the suite, naming the
+      field.** This is the criterion that has to still work in a year, when the person adding the
+      field has never read this ticket.
 - [ ] A message at the tmux size limit still works across RPC: `maxMessageBytesFor(name)` is computed
       where tmux is, in `control`, not by the caller. (007's finding — the session name eats the
       payload — means a caller that computes this is computing it against the wrong name.)
@@ -158,11 +163,14 @@ restarts, with the web app still up to show it.
 
 ## Open questions
 
-- [ ] **Serialisation format** — 038's open question, which this ticket forces. `tasks` and session
-      records carry `Date`s (`acquired_at`, `receivedAt`, `started_at`); over HTTPS+JSON those become
-      strings and every call site that does date arithmetic is a silent bug. Needs deciding before
-      the client is written: explicit codecs per contract type, or a shared serialiser with a test
-      that round-trips every contract type. Leaning the latter.
+- [x] ~~**Serialisation format**~~ **Answered 2026-10-12: one shared serialiser plus a round-trip
+      test over every contract type**, not per-type codecs. The reasoning is about the *second*
+      mistake rather than the first: a forgotten codec fails at runtime, in front of an agent, while
+      a missing entry in an enumerating test fails in CI. Concretely what it prevents:
+      `file_locks.expires_at` arriving as a string, and the sweeper's "is this expired" comparison
+      still *running* — comparing a string, and sometimes right by accident. The
+      `NODE_EXTRA_CA_CERTS` failure shape again: works perfectly, silently wrong. Now two criteria
+      above rather than a question.
 - [ ] Does `control` get its own database connection and its own `LOGIN` role now (035's
       `control_svc` becoming a real login), or does it keep calling through the shared config?
       Its own is the point of 035 and is more work here. Leaning its own, because a process that
