@@ -1,7 +1,7 @@
 # Implementation tickets — build steps 1–3, plus service boundaries
 
-Forty tickets. Thirty-two cover the first three build steps of
-[the system design](../ai-agent-office-design.md); eight (033–040) are cross-cutting and come from
+Forty-one tickets. Thirty-two cover the first three build steps of
+[the system design](../ai-agent-office-design.md); nine (033–041) are cross-cutting and come from
 [the service boundaries design](../service-boundaries-design.md), which answers "make everything
 microservices" for a 3.2 GB box.
 
@@ -114,9 +114,10 @@ the ownership map with the date it was added.
 | [038](038-extraction-readiness.md) | Extraction readiness: the service graph and its test | B | dev | opus | 033, 034 |
 | [039](039-identity-as-platform.md) | Identity as platform | B | dev | opus | 033 |
 | [040](040-control-service-split.md) | Control service: its own process, its own privilege | B | dev | opus | 028, 034, 038, 039 |
+| [041](041-web-contract-boundaries.md) | Contract boundaries in the web app | B | dev | sonnet | 033 |
 
-**By step:** 11 / 11 / 10 / 8 boundaries. **By department:** dev 34, research 3, qa 3.
-**By model:** opus 24, sonnet 16.
+**By step:** 11 / 11 / 10 / 9 boundaries. **By department:** dev 35, research 3, qa 3.
+**By model:** opus 24, sonnet 17.
 
 **Step "B" is not a fourth build step.** The design's step 4 is the git workflow. The boundaries
 tickets are cross-cutting: they change who may call whom, not what the office does, and 033 is
@@ -218,6 +219,7 @@ flowchart TD
     T038 --> T040
     T039 --> T040
     T028 --> T040
+    T033 --> T041[041 web contracts]
   end
 ```
 
@@ -333,6 +335,7 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `packages/server/src/platform/das/lanes.ts`, `saturation.ts` (+ tests) | 036 |
 | `packages/server/src/platform/events/deadline.ts`, `slow-handlers.ts` (+ tests) | 037 |
 | `tests/boundaries/extractable.test.ts`, `shared-state.ts`, `scripts/service-graph.mjs`, `docs/service-graph.md` | 038 |
+| `tests/boundaries/web-contracts.test.ts`, `packages/web/src/features/README.md` | 041 |
 | `packages/server/src/platform/identity/contract.ts`, `token.ts`, `authenticate.ts` (+ tests) | 039 |
 | `packages/control/` (package.json, tsconfig.json, src/index.ts, src/rpc-server.ts, src/health.ts), `packages/server/src/platform/rpc/contract.ts`, `client.ts`, `server.ts`, `deploy/host/office-control.service`, `docs/runbooks/control-service.md` | 040 |
 | `docs/service-boundaries-design.md` | — (design, unowned, like `docs/ai-agent-office-design.md`) |
@@ -345,7 +348,7 @@ risk of each is in [the boundaries design](../service-boundaries-design.md) §7.
 
 ## Decisions made
 
-Forty-two questions the design left open have been settled and written into the tickets. Recorded here because several change behaviour the design describes differently.
+Forty-five questions the design left open have been settled and written into the tickets. Recorded here because several change behaviour the design describes differently.
 
 | Decision | Lands in |
 | --- | --- |
@@ -394,6 +397,10 @@ Forty-two questions the design left open have been settled and written into the 
 | **The `NOPASSWD: /usr/bin/tmux` grant stays broad.** Decided 2026-10-12, on the strength of a decision already taken: 007 refuses privileged accounts, so the grant reaches `agent1/2/3` only — purpose-created accounts holding nothing of the box's four other people. A wrapper would guard against `office` itself being compromised, a different threat from the one flagged, at the cost of a new failure point in a launch path whose argument handling already loses payload to the session name. Revisit when `office` first runs code it did not author — step 8's preview containers. | 007 |
 | **The Claude CLI is pinned at 2.1.283, dev host aligned to match.** Decided 2026-10-12. Two things moved under the build in one day of measuring — auto mode became the default permission mode, and `default` left the `--permission-mode` vocabulary — and neither announced itself to anything that drives the pane. Aligning the dev host (2.1.268 → 2.1.283) is the half easy to skip and shouldn't be: a skew between where code is written and where it runs is how one of those stayed hidden. Two follow-ons: hold the package so `unattended-upgrades` cannot move it, and record the CLI version at session start so a bump that happens anyway is visible. | 007, 009 |
 | **No default department owner — Management proposes, a human assigns.** Answers the design's own "Who owns which department by default?", 2026-10-12. A standing mapping would invent one for teammates who may not be using the office yet, and the Draft column is where a wrong assignment is cheapest to fix. 019's promotion validation already refuses a batch whose tasks lack an owner; that refusal is now permanent rather than provisional. | 019 |
+
+| **An `office_migrator` role runs migrations; the server's role cannot.** Decided 2026-10-12, on one principle: the layer that enforces grants must not also be able to grant. `office_migrator` holds `CREATE` and is used only by `pnpm migrate`; the credential must never reach the server's environment, and `provision-host.sh` (unowned, run by `rtd`) gains the role's creation — so this crosses a host boundary as well as a code one. Unblocks 035. | 035, 007 |
+| **`@office/shared` is for pure code and ids only.** Decided 2026-10-12. `ids.ts` stays, `locks/overlap.ts` moves in (a pure function over two patterns, owned by nobody), and every *record* type moves to its owning contract — `TaskRecord` to `tasks`, `FileLockRecord` to `locks`, `ChatMessage` to `chat`. Without the rule, `shared` becomes the new god-module by accident: the one package every ticket edits, which is the failure the contract convention was adopted to prevent. The nine files there are re-homed through the retrofit, not in one sweep. | 033, 041, and the retrofit |
+| **The web app gets the same contract rule — ticket 041, after 033.** Decided 2026-10-12. The UI is the half that is mostly unbuilt (four step-3 tickets open, and every later step adds pages), so it is where several agents will collide; and the rule is nearly free because `packages/web` already has the overlay and file-route conventions. Not folded into 033, whose tests need a second traversal root and a different notion of "service" — a UI feature has no grant, no lane and no transaction. | 041 |
 
 ## Still open before starting
 

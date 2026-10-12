@@ -113,7 +113,8 @@ answered by counting, which found four transactions across the pair rather than 
 this document first credited. See §3.1.
 
 `tasks/scope-ordering.ts → locks/overlap.ts` is the one edge that is not coupling at all —
-`overlap` is a pure function over two patterns. It belongs in `@office/shared` (**Q4**).
+`overlap` is a pure function over two patterns. It moves to `@office/shared`, which **Q4** settled
+as the home for pure code and ids only.
 
 ### 3.1 The transactional crossings — four, not one
 
@@ -303,21 +304,28 @@ tests, and nothing else is retrofitted until they are green twice.
 
 Not resolved by invention, per the repo's own rule.
 
-- **Q1 — Who runs migrations once service roles exist?** Service roles must not hold `CREATE`, so
-  `db/migrate.ts` needs a separate migrator role and a credential the running server does not have.
-  That is a real operational change to `.env.example` and `provision-host.sh`. *Leaning:* an
-  `office_migrator` role, used only by `pnpm migrate`, never by the server. **Blocks 035.**
+- ~~**Q1 — Who runs migrations once service roles exist?**~~ **Answered 2026-10-12: an
+  `office_migrator` role**, holding `CREATE`, used only by `pnpm migrate` and never by the running
+  server. The principle that decided it: *the layer that enforces grants must not also be able to
+  grant.* Two consequences for 035 to carry — the credential must never reach the server's
+  environment, and `provision-host.sh` (unowned, run by `rtd`) gains the role's creation, so this
+  crosses a host boundary as well as a code one. 035 is unblocked.
 - ~~**Q2 — Do `tasks` and `locks` stay one deployment unit?**~~ **Answered 2026-10-12: yes,
   permanently.** Counting the transactions rather than recalling them found four across the pair,
   two of them starting in `control`, and the saga alternative is now rejected rather than deferred.
   Full reasoning and the inventory in §3.1 — including the consequence for 040, which this document
   had missed.
-- **Q3 — Does `packages/web` get the same treatment?** It already has the overlay and file-route
-  conventions, so a `features/<name>/contract.ts` rule is nearly free there and would give the UI
-  the same agent-parallel property. *Leaning:* yes, as its own ticket after 033, not folded in.
-- **Q4 — What is `@office/shared` for, once contracts exist?** Today it holds the cross-feature
-  types. Some become contract-owned; the pure ones (`locks/overlap`, `ids`) are genuinely shared.
-  Needs a rule, or it becomes the new god-module by accident.
+- ~~**Q3 — Does `packages/web` get the same treatment?**~~ **Answered 2026-10-12: yes, as its own
+  ticket after 033** — now [041](tasks/041-web-contract-boundaries.md). Not folded into 033 because
+  033's tests need a second traversal root and a different notion of "service", and 033 is the
+  ticket currently blocking everything else.
+- ~~**Q4 — What is `@office/shared` for, once contracts exist?**~~ **Answered 2026-10-12: pure code
+  and ids only.** `ids.ts` stays and `locks/overlap.ts` moves in — a pure function over two patterns
+  that belongs to nobody. Every *record* type moves to its owning service's contract: `TaskRecord`
+  to `tasks`, `FileLockRecord` to `locks`, `ChatMessage` to `chat`. The rule exists because without
+  one, `shared` becomes the new god-module by accident — the single package every ticket edits,
+  which is exactly the failure the contract convention was adopted to prevent. The nine files there
+  today are re-homed as part of the retrofit, not in one sweep.
 
 ## 9. Tickets
 
@@ -331,6 +339,7 @@ Not resolved by invention, per the repo's own rule.
 | [038](tasks/038-extraction-readiness.md) | Extraction readiness: the service graph and its test | 033, 034 |
 | [039](tasks/039-identity-as-platform.md) | Identity as platform | 033 |
 | [040](tasks/040-control-service-split.md) | Control service: its own process, its own privilege | **028**, 034, 038, 039 |
+| [041](tasks/041-web-contract-boundaries.md) | Contract boundaries in the web app | 033 |
 
 **Critical path** (4 deep): 033 → 034 → 038 → 040.
 **Startable immediately:** 033. **Then in parallel:** 034, 037, 039.
