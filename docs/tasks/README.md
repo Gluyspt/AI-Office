@@ -59,6 +59,19 @@ points at but nothing created; on a real host `deploy/host/provision-host.sh` do
 
 **Manifest exception.** Dependency additions to an existing `package.json`, appended lines in `.env.example`, and a new `loadXConfig()` section appended to `packages/server/src/core/config.ts`, are append-only and are *not* part of any ticket's file scope. Every other file is owned. Editing an existing config section, the shared readers, or `ConfigError` still belongs to ticket 004.
 
+**Shrink-only exception** (added 2026-10-12 by 033, the mirror of the manifest exception). Two files
+exist to record what is already wrong, and **deleting an entry from either is outside any ticket's
+file scope**:
+
+| File | Holds | Adding an entry |
+| --- | --- | --- |
+| `tests/boundaries/baseline.ts` | The 33 cross-feature imports that bypassed a contract when 033 landed | Not allowed — a new one is a new violation. Import the contract instead |
+| `tests/boundaries/crossings.ts` | The four non-serialisable values allowed across a boundary | Needs the ticket that introduced it, and one sentence on what breaks without it |
+
+Without this, every retrofit ticket would edit 033's files to record its own progress, which is the
+collision one-file-one-ticket exists to prevent. It is also why the baseline lives in its own file
+rather than inside `contracts.test.ts`.
+
 **Reopening a closed ticket beats inventing an owner for its files.** Where a later finding needs a
 change inside a file an earlier ticket owns permanently — `sessions.ts` for 008, `provision.ts` for
 009, `config.ts` for 004 — that ticket is reopened with a dated section carrying its own scope,
@@ -329,7 +342,8 @@ Every path any ticket in steps 1–3 creates, and the single ticket that owns it
 | `tests/spine/harness.ts`, `tests/spine/spine.e2e.test.ts`, `tests/README.md` | 011 |
 | `tests/coordination/claim-complete.test.ts`, `dependencies.test.ts`, `guard.test.ts`, `planning.test.ts` | 021 |
 | `tests/ui/board.test.tsx`, `tests/ui/chat.test.tsx` | 030 |
-| `packages/server/src/platform/README.md`, `tests/boundaries/contracts.test.ts`, `declared-deps.test.ts`, `crossings.ts`, `tests/boundaries/README.md` | 033 |
+| `packages/server/src/platform/README.md`, `tests/boundaries/contracts.test.ts`, `declared-deps.test.ts`, `scan.ts`, `crossings.ts`, `baseline.ts`, `package.json`, `tsconfig.json`, `tests/boundaries/README.md` | 033 (`scan.ts`, `baseline.ts`, `package.json`, `tsconfig.json` added during implementation — see the ticket; `baseline.ts` and `crossings.ts` are shrink-only, above) |
+| `pnpm-workspace.yaml` — the `tests/*` glob | 001 (reopened 2026-10-12 for 033) |
 | `packages/server/src/platform/das/contract.ts`, `das.ts`, `grant.ts` (+ their tests) | 034 |
 | `db/migrations/0016_service_roles.sql`, `packages/server/src/platform/das/role.ts`, `tests/boundaries/grants.test.ts` | 035 |
 | `packages/server/src/platform/das/lanes.ts`, `saturation.ts` (+ tests) | 036 |

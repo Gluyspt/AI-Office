@@ -66,6 +66,29 @@ pins the major — the host runs v24, so `engines: ">=22"` had been satisfied *v
 workspace glob was checked by creating `packages/probe`, confirming `pnpm -r list` picked it up,
 and deleting it.
 
+### Reopened 2026-10-12 — `tests/*` joins the workspace (ticket 033)
+
+**Scope:** `pnpm-workspace.yaml`, one line plus its comment.
+
+033 created `tests/boundaries/`, the first standalone test suite, and the typecheck found the gap
+that had been latent since this ticket shipped: **`pnpm-workspace.yaml` globs only `packages/*`**, so
+anything under `tests/` is not a workspace project. Two consequences, both silent:
+
+- `pnpm -r --if-present run typecheck` skipped it. The suite ran green under Vitest — which reads
+  `package.json` directly and needs no workspace membership — while nothing typechecked it.
+- It could not declare a dependency. `@types/node` is declared by each of the three packages and is
+  *not* hoisted to the root, so `"types": ["node"]` failed to resolve with `TS2688` and the only
+  fixes available were to drop node types or vendor a path.
+
+`tests/*` is now in the glob. This is not specific to 033: **tickets 011, 021 and 030 each add a
+`tests/*` suite** (`tests/spine/`, `tests/coordination/`, `tests/ui/`) and every one of them would
+have hit this. Whichever had landed first would have owned the fix; 033 got there first.
+
+- [x] `pnpm-workspace.yaml` globs `tests/*` alongside `packages/*`, with a comment naming why.
+- [x] `npx --yes pnpm@12.5.1 -r --if-present run typecheck` reports **4 of 5 workspace projects** and
+      includes `tests/boundaries`; all four pass.
+- [x] The existing verification above still holds — the glob is still a glob, not an enumeration.
+
 ## Open questions
 
 - [ ] Test runner is unspecified by the design. Assumed **Vitest**, consistent with the stack decision above. Confirm.

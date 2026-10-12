@@ -1,5 +1,10 @@
 packages:
   - "packages/*"
+  # Standalone test suites. Added 2026-10-12 by ticket 033, which created the
+  # first one (tests/boundaries). Without this a tests/* suite is invisible to
+  # `pnpm -r run typecheck` and cannot declare its own dependencies — tickets
+  # 011, 021 and 030 each add one and would all have hit this.
+  - "tests/*"
 
 # esbuild is a transitive dependency of vitest/vite; its postinstall only
 # fetches its platform-specific binary. Approved so `pnpm install` doesn't
