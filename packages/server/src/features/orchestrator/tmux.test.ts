@@ -554,7 +554,7 @@ describe("sendMessage refuses to deliver into a dialog", () => {
 
 describe("message rejection is loud, never silent truncation", () => {
   for (const [what, text, contains] of [
-    ["a NUL byte", "before after", "NUL"],
+    ["a NUL byte", "before\0after", "NUL"],
     ["a carriage return", "line one\r\nline two", "carriage return"],
     ["an empty message", "", "empty"],
   ] as const) {
